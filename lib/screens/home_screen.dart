@@ -451,13 +451,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       setState(() => _speed = value);
                       await _player.setSpeed(value);
                     },
-                    itemBuilder: (_) => <PopupMenuEntry<double>>[
+                    itemBuilder: (_) => <double>[
                       0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
                     ].map((value) => PopupMenuItem<double>(
                           value: value,
                           child: Text('${value}x'),
-                        ))
-                        .toList(),
+                        )).toList(),
                     child: Padding(
                       padding: const EdgeInsets.all(8),
                       child: Text(
