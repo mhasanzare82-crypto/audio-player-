@@ -140,7 +140,6 @@ class _HomeScreenState extends State<HomeScreen> {
       sources,
       initialIndex: oldIndex,
       initialPosition: Duration.zero,
-      useLazyPreparation: true,
     );
     if (autoplay) await _player.play();
   }
@@ -148,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _playTrack(int index) async {
     if (index < 0 || index >= _tracks.length) return;
     try {
-      if (_player.sequence == null || _player.sequence!.length != _tracks.length) {
+      if (_player.sequence.length != _tracks.length) {
         await _replacePlaylist(autoplay: false);
       }
       await _player.seek(Duration.zero, index: index);
@@ -306,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
                   itemCount: _tracks.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 7),
+                  separatorBuilder: (_, _) => const SizedBox(height: 7),
                   itemBuilder: (context, index) {
                     final track = _tracks[index];
                     final selected = index == _currentIndex;
@@ -452,11 +451,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       setState(() => _speed = value);
                       await _player.setSpeed(value);
                     },
-                    itemBuilder: (_) => [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
-                        .map((value) => PopupMenuItem(
-                              value: value,
-                              child: Text('${value}x'),
-                            ))
+                    itemBuilder: (_) => <PopupMenuEntry<double>>[
+                      0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
+                    ].map((value) => PopupMenuItem<double>(
+                          value: value,
+                          child: Text('${value}x'),
+                        ))
                         .toList(),
                     child: Padding(
                       padding: const EdgeInsets.all(8),
