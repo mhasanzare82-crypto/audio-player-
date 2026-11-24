@@ -625,14 +625,19 @@ class _LyricsEditor extends StatefulWidget {
 
 class _LyricsEditorState extends State<_LyricsEditor> {
   late final TextEditingController _controller;
+  late final TextEditingController _searchController;
+  final FocusNode _lyricsFocusNode = FocusNode();
   Timer? _saveTimer;
   bool _saving = false;
   bool _saved = true;
+  List<int> _matches = [];
+  int _activeMatch = -1;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialText);
+    _searchController = TextEditingController();
   }
 
   void _scheduleSave(String value) {
@@ -644,6 +649,62 @@ class _LyricsEditorState extends State<_LyricsEditor> {
     _saveTimer = Timer(const Duration(milliseconds: 500), () {
       unawaited(_save(value));
     });
+    if (_searchController.text.isNotEmpty && _matches.isNotEmpty) {
+      _findMatches(preservePosition: true);
+    }
+  }
+
+  void _findMatches({bool preservePosition = false}) {
+    final query = _searchController.text;
+    final text = _controller.text;
+    if (query.isEmpty || text.isEmpty) {
+      setState(() {
+        _matches = [];
+        _activeMatch = -1;
+      });
+      return;
+    }
+
+    final source = text.toLowerCase();
+    final needle = query.toLowerCase();
+    final found = <int>[];
+    var offset = 0;
+    while (offset <= source.length - needle.length) {
+      final index = source.indexOf(needle, offset);
+      if (index < 0) break;
+      found.add(index);
+      offset = index + needle.length;
+    }
+
+    final previousStart = preservePosition && _activeMatch >= 0 &&
+            _activeMatch < _matches.length
+        ? _matches[_activeMatch]
+        : -1;
+    var nextActive = found.isEmpty ? -1 : 0;
+    if (previousStart >= 0 && found.isNotEmpty) {
+      final sameIndex = found.indexOf(previousStart);
+      if (sameIndex >= 0) nextActive = sameIndex;
+    }
+    setState(() {
+      _matches = found;
+      _activeMatch = nextActive;
+    });
+    if (found.isNotEmpty) _selectMatch(nextActive);
+  }
+
+  void _selectMatch(int index) {
+    if (index < 0 || index >= _matches.length) return;
+    final start = _matches[index];
+    final end = start + _searchController.text.length;
+    _lyricsFocusNode.requestFocus();
+    _controller.selection = TextSelection(baseOffset: start, extentOffset: end);
+    setState(() => _activeMatch = index);
+  }
+
+  void _moveMatch(int step) {
+    if (_matches.isEmpty) return;
+    final next = (_activeMatch + step + _matches.length) % _matches.length;
+    _selectMatch(next);
   }
 
   Future<void> _save(String value) async {
@@ -664,12 +725,15 @@ class _LyricsEditorState extends State<_LyricsEditor> {
       unawaited(widget.onSave(_controller.text));
     }
     _controller.dispose();
+    _searchController.dispose();
+    _lyricsFocusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final hasMatches = _matches.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -688,10 +752,61 @@ class _LyricsEditorState extends State<_LyricsEditor> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: colors.primary, fontWeight: FontWeight.w600),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  textDirection: TextDirection.rtl,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _findMatches(),
+                  decoration: InputDecoration(
+                    hintText: 'جست‌وجو در متن همین ویس...',
+                    prefixIcon: const Icon(Icons.search),
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      tooltip: 'جست‌وجو',
+                      onPressed: _findMatches,
+                      icon: const Icon(Icons.search_rounded),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton.filledTonal(
+                tooltip: 'نتیجه قبلی',
+                onPressed: hasMatches ? () => _moveMatch(-1) : null,
+                icon: const Icon(Icons.keyboard_arrow_up_rounded),
+              ),
+              IconButton.filledTonal(
+                tooltip: 'نتیجه بعدی',
+                onPressed: hasMatches ? () => _moveMatch(1) : null,
+                icon: const Icon(Icons.keyboard_arrow_down_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              _searchController.text.isEmpty
+                  ? 'جست‌وجو فقط در متن فایل انتخاب‌شده انجام می‌شود.'
+                  : hasMatches
+                      ? 'نتیجه ${_activeMatch + 1} از ${_matches.length}'
+                      : 'کلمه‌ای با این عبارت پیدا نشد.',
+              style: TextStyle(
+                fontSize: 12,
+                color: hasMatches ? colors.primary : colors.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: TextField(
               controller: _controller,
+              focusNode: _lyricsFocusNode,
               expands: true,
               minLines: null,
               maxLines: null,
@@ -730,7 +845,7 @@ class _LyricsEditorState extends State<_LyricsEditor> {
               TextButton.icon(
                 onPressed: () {
                   _saveTimer?.cancel();
-                  _save(_controller.text);
+                  unawaited(_save(_controller.text));
                 },
                 icon: const Icon(Icons.save_outlined),
                 label: const Text('ذخیره'),
