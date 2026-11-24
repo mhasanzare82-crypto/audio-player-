@@ -630,6 +630,7 @@ class _LyricsEditorState extends State<_LyricsEditor> {
   Timer? _saveTimer;
   bool _saving = false;
   bool _saved = true;
+  bool _hasSearched = false;
   List<int> _matches = [];
   int _activeMatch = -1;
 
@@ -653,6 +654,7 @@ class _LyricsEditorState extends State<_LyricsEditor> {
       setState(() {
         _matches = [];
         _activeMatch = -1;
+        _hasSearched = false;
       });
     }
   }
@@ -660,6 +662,7 @@ class _LyricsEditorState extends State<_LyricsEditor> {
   void _findMatches({bool preservePosition = false}) {
     final query = _searchController.text;
     final text = _controller.text;
+    _hasSearched = true;
     if (query.isEmpty || text.isEmpty) {
       setState(() {
         _matches = [];
@@ -764,6 +767,13 @@ class _LyricsEditorState extends State<_LyricsEditor> {
                   textDirection: TextDirection.rtl,
                   textInputAction: TextInputAction.search,
                   onSubmitted: (_) => _findMatches(),
+                  onChanged: (_) {
+                    setState(() {
+                      _matches = [];
+                      _activeMatch = -1;
+                      _hasSearched = false;
+                    });
+                  },
                   decoration: InputDecoration(
                     hintText: 'جست‌وجو در متن همین ویس...',
                     prefixIcon: const Icon(Icons.search),
@@ -798,7 +808,9 @@ class _LyricsEditorState extends State<_LyricsEditor> {
                   ? 'جست‌وجو فقط در متن فایل انتخاب‌شده انجام می‌شود.'
                   : hasMatches
                       ? 'نتیجه ${_activeMatch + 1} از ${_matches.length}'
-                      : 'کلمه‌ای با این عبارت پیدا نشد.',
+                      : _hasSearched
+                          ? 'کلمه‌ای با این عبارت پیدا نشد.'
+                          : 'برای شروع، دکمه جست‌وجو را بزن.',
               style: TextStyle(
                 fontSize: 12,
                 color: hasMatches ? colors.primary : colors.onSurfaceVariant,
