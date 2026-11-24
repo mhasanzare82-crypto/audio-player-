@@ -132,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final oldIndex = _currentIndex < 0
         ? 0
-        : _currentIndex.clamp(0, _tracks.length - 1);
+        : _currentIndex.clamp(0, _tracks.length - 1).toInt();
     final sources = _tracks
         .map((track) => AudioSource.uri(Uri.file(track.path)))
         .toList();
@@ -480,7 +480,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   final max = duration.inMilliseconds.toDouble();
                   final value = position.inMilliseconds
                       .toDouble()
-                      .clamp(0.0, max > 0 ? max : 1.0);
+                      .clamp(0.0, max > 0 ? max : 1.0)
+                      .toDouble();
                   return Column(
                     children: [
                       Slider(
@@ -641,7 +642,7 @@ class _LyricsEditorState extends State<_LyricsEditor> {
       _saving = false;
     });
     _saveTimer = Timer(const Duration(milliseconds: 500), () {
-      _save(value);
+      unawaited(_save(value));
     });
   }
 
@@ -660,7 +661,7 @@ class _LyricsEditorState extends State<_LyricsEditor> {
   void dispose() {
     _saveTimer?.cancel();
     if (!_saved) {
-      widget.onSave(_controller.text);
+      unawaited(widget.onSave(_controller.text));
     }
     _controller.dispose();
     super.dispose();
