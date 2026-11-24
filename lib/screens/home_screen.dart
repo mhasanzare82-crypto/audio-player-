@@ -649,8 +649,11 @@ class _LyricsEditorState extends State<_LyricsEditor> {
     _saveTimer = Timer(const Duration(milliseconds: 500), () {
       unawaited(_save(value));
     });
-    if (_searchController.text.isNotEmpty && _matches.isNotEmpty) {
-      _findMatches(preservePosition: true);
+    if (_matches.isNotEmpty) {
+      setState(() {
+        _matches = [];
+        _activeMatch = -1;
+      });
     }
   }
 
