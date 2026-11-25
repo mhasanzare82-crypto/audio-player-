@@ -10,6 +10,17 @@ class LibraryStore {
   static const _foldersKey = 'audio_library_folders_v1';
   static const _bookmarksKey = 'audio_bookmarks_v1';
   static const _playlistsKey = 'audio_playlists_v1';
+  static const _volumeKey = 'audio_player_volume_v1';
+
+  Future<double> loadVolume() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getDouble(_volumeKey) ?? 1.0).clamp(0.0, 1.0);
+  }
+
+  Future<void> saveVolume(double volume) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_volumeKey, volume.clamp(0.0, 1.0));
+  }
 
   Future<List<AudioTrack>> loadTracks() async {
     final prefs = await SharedPreferences.getInstance();
