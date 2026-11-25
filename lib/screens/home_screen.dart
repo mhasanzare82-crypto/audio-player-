@@ -143,6 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
           title: const Text('پوشه‌های کتابخانه'),
           content: SizedBox(
             width: double.maxFinite,
+            height: 320,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
