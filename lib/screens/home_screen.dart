@@ -379,14 +379,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (_player.sequence.length != _tracks.length) {
         await _replacePlaylist(autoplay: false);
       }
-      var sequenceIndex = trackIndex;
-      if (_shuffle) {
-        final shuffledIndex = _player.shuffleIndices?.indexOf(trackIndex) ?? -1;
-        if (shuffledIndex >= 0) sequenceIndex = shuffledIndex;
-      }
       await _player.seek(
         Duration(milliseconds: bookmark.positionMs),
-        index: sequenceIndex,
+        index: trackIndex,
       );
       if (mounted) setState(() {});
     } catch (error) {
