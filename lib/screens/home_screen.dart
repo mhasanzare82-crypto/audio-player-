@@ -235,9 +235,25 @@ class _HomeScreenState extends State<HomeScreen> {
           continue;
         }
         final name = item['name']!;
-        added.add(AudioTrack(
-          path: uri,
-          title: name.replaceFirst(RegExp(r'\.[^.]+
+        final dotIndex = name.lastIndexOf('.');
+        final title = dotIndex > 0 ? name.substring(0, dotIndex) : name;
+        added.add(AudioTrack(path: uri, title: title));
+      }
+      if (added.isNotEmpty) {
+        setState(() => _tracks.addAll(added));
+        await _persistTracks();
+        await _replacePlaylist(autoplay: false);
+      }
+      _showMessage(
+        'اسکن تمام شد: ${added.length} فایل جدید، '
+        '$duplicates فایل تکراری از ${found.length} فایل شناسایی‌شده.',
+      );
+    } catch (error) {
+      _showMessage('اسکن پوشه‌ها ناموفق بود: $error');
+    }
+  }
+
+  Future<void> _replacePlaylist({required bool autoplay}) async {
     if (_tracks.isEmpty) {
       await _player.stop();
       return;
@@ -245,14 +261,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final oldIndex = _currentIndex < 0
         ? 0
         : _currentIndex.clamp(0, _tracks.length - 1).toInt();
-    final sources = _tracks
-        .map((track) {
-          final uri = Uri.parse(track.path);
-          return AudioSource.uri(
-            uri.scheme == 'content' ? uri : Uri.file(track.path),
-          );
-        })
-        .toList();
+    final sources = _tracks.map((track) {
+      final uri = Uri.parse(track.path);
+      return AudioSource.uri(
+        uri.scheme == 'content' ? uri : Uri.file(track.path),
+      );
+    }).toList();
     await _player.setAudioSources(
       sources,
       initialIndex: oldIndex,
@@ -260,7 +274,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (autoplay) await _player.play();
   }
-
   Future<void> _playTrack(int index) async {
     if (index < 0 || index >= _tracks.length) return;
     try {
