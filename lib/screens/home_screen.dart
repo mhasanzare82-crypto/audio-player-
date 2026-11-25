@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/audio_bookmark.dart';
+import '../models/audio_playlist.dart';
 import '../models/audio_track.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
@@ -44,6 +45,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _lyricsHoldTriggered = false;
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
+  final List<AudioPlaylist> _playlists = [];
+  String? _expandedPlaylistId;
 
   AudioTrack? get _currentTrack =>
       _currentIndex >= 0 && _currentIndex < _tracks.length
@@ -53,7 +56,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
@@ -75,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final saved = await _store.loadTracks();
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
+      final savedPlaylists = await _store.loadPlaylists();
       final available = saved
           .where((track) => track.path.startsWith('content://') ||
               File(track.path).existsSync())
@@ -83,6 +87,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       setState(() {
         _tracks.addAll(available);
         _lyrics = lyrics;
+        _playlists
+          ..clear()
+          ..addAll(savedPlaylists.map((playlist) => playlist.copyWith(
+                trackPaths: playlist.trackPaths
+                    .where((path) => available.any((track) => track.path == path))
+                    .toList(),
+              )));
         _bookmarks
           ..clear()
           ..addAll(savedBookmarks.where((bookmark) =>
@@ -97,6 +108,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
       if (_bookmarks.length != savedBookmarks.length) {
         await _store.saveBookmarks(_bookmarks);
+      }
+      if (_playlists.length != savedPlaylists.length ||
+          _playlists.any((playlist) => playlist.trackPaths.length !=
+              savedPlaylists.firstWhere((savedPlaylist) => savedPlaylist.id == playlist.id,
+                  orElse: () => playlist).trackPaths.length)) {
+        await _store.savePlaylists(_playlists);
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -311,6 +328,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (index < 0 || index >= _tracks.length) return;
     final removed = _tracks.removeAt(index);
     _bookmarks.removeWhere((bookmark) => bookmark.audioPath == removed.path);
+    for (var i = 0; i < _playlists.length; i++) {
+      final playlist = _playlists[i];
+      _playlists[i] = playlist.copyWith(
+        trackPaths: playlist.trackPaths.where((path) => path != removed.path).toList(),
+      );
+    }
+    await _store.savePlaylists(_playlists);
     await _store.saveBookmarks(_bookmarks);
     _lyrics.remove(removed.path);
     await _store.saveLyrics(_lyrics);
@@ -477,6 +501,225 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Future<void> _createPlaylist() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ساخت پلی‌لیست جدید'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textDirection: TextDirection.rtl,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          decoration: const InputDecoration(
+            labelText: 'نام پلی‌لیست',
+            hintText: 'مثلاً موسیقی آرامش‌بخش',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('ساختن'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.trim().isEmpty) return;
+    final playlist = AudioPlaylist(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: name.trim(),
+      trackPaths: const [],
+    );
+    setState(() {
+      _playlists.add(playlist);
+      _expandedPlaylistId = playlist.id;
+    });
+    await _store.savePlaylists(_playlists);
+  }
+
+  Future<void> _addCurrentTrackToPlaylist(AudioPlaylist playlist) async {
+    final track = _currentTrack;
+    if (track == null) return;
+    if (playlist.trackPaths.contains(track.path)) {
+      _showMessage('این فایل از قبل در پلی‌لیست «${playlist.name}» وجود دارد.');
+      return;
+    }
+    final index = _playlists.indexWhere((item) => item.id == playlist.id);
+    if (index < 0) return;
+    setState(() {
+      _playlists[index] = playlist.copyWith(
+        trackPaths: [...playlist.trackPaths, track.path],
+      );
+      _expandedPlaylistId = playlist.id;
+    });
+    await _store.savePlaylists(_playlists);
+    _showMessage('«${track.title}» به پلی‌لیست «${playlist.name}» اضافه شد.');
+  }
+
+  Future<void> _removeFromPlaylist(AudioPlaylist playlist, String path) async {
+    final index = _playlists.indexWhere((item) => item.id == playlist.id);
+    if (index < 0) return;
+    setState(() {
+      _playlists[index] = playlist.copyWith(
+        trackPaths: playlist.trackPaths.where((item) => item != path).toList(),
+      );
+    });
+    await _store.savePlaylists(_playlists);
+  }
+
+  Future<void> _deletePlaylist(AudioPlaylist playlist) async {
+    setState(() => _playlists.removeWhere((item) => item.id == playlist.id));
+    await _store.savePlaylists(_playlists);
+  }
+
+  Widget _buildPlaylistsTab(ColorScheme colors) {
+    final current = _currentTrack;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('پلی‌لیست‌های من',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            )),
+                    const SizedBox(height: 3),
+                    Text(
+                      current == null
+                          ? 'برای افزودن فایل، ابتدا یک صوت پخش کن.'
+                          : 'فایل فعلی: ${current.title}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: _createPlaylist,
+                icon: const Icon(Icons.add),
+                label: const Text('پلی‌لیست جدید'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _playlists.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.queue_music_rounded,
+                            size: 60, color: colors.primary),
+                        const SizedBox(height: 12),
+                        const Text('هنوز پلی‌لیستی نساخته‌ای.'),
+                        const SizedBox(height: 6),
+                        Text(
+                          'ابتدا پلی‌لیست بساز، سپس فایل در حال پخش را به آن اضافه کن.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: colors.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                  itemCount: _playlists.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 6),
+                  itemBuilder: (context, index) {
+                    final playlist = _playlists[index];
+                    final expanded = _expandedPlaylistId == playlist.id;
+                    final tracks = playlist.trackPaths
+                        .map((path) => _tracks.where((track) => track.path == path))
+                        .where((matches) => matches.isNotEmpty)
+                        .map((matches) => matches.first)
+                        .toList();
+                    return Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: ExpansionTile(
+                        key: PageStorageKey(playlist.id),
+                        initiallyExpanded: expanded,
+                        onExpansionChanged: (value) => setState(() {
+                          _expandedPlaylistId = value ? playlist.id : null;
+                        }),
+                        leading: Icon(Icons.queue_music_rounded,
+                            color: colors.primary),
+                        title: Text(playlist.name,
+                            style: const TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: Text('${tracks.length} فایل صوتی'),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'add') _addCurrentTrackToPlaylist(playlist);
+                            if (value == 'delete') _deletePlaylist(playlist);
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                                value: 'add', child: Text('افزودن فایل در حال پخش')),
+                            PopupMenuItem(
+                                value: 'delete', child: Text('حذف پلی‌لیست')),
+                          ],
+                        ),
+                        children: [
+                          if (current != null)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: TextButton.icon(
+                                  onPressed: () => _addCurrentTrackToPlaylist(playlist),
+                                  icon: const Icon(Icons.playlist_add),
+                                  label: const Text('افزودن فایل فعلی به این پلی‌لیست'),
+                                ),
+                              ),
+                            ),
+                          if (tracks.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Text('این پلی‌لیست هنوز خالی است.'),
+                            )
+                          else
+                            ...tracks.map((track) => ListTile(
+                                  dense: true,
+                                  leading: const Icon(Icons.music_note_outlined),
+                                  title: Text(track.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis),
+                                  onTap: () {
+                                    final trackIndex = _tracks.indexOf(track);
+                                    if (trackIndex >= 0) _playTrack(trackIndex);
+                                  },
+                                  trailing: IconButton(
+                                    tooltip: 'حذف از پلی‌لیست',
+                                    onPressed: () => _removeFromPlaylist(
+                                        playlist, track.path),
+                                    icon: const Icon(Icons.remove_circle_outline),
+                                  ),
+                                )),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _saveLyrics(String path, String value) async {
     _lyrics[path] = value;
     await _store.saveLyrics(_lyrics);
@@ -560,6 +803,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Tab(icon: Icon(Icons.library_music_outlined), text: 'کتابخانه صوتی'),
               Tab(icon: Icon(Icons.notes_rounded), text: 'متن ویس'),
               Tab(icon: Icon(Icons.bookmarks_outlined), text: 'نشانک‌ها'),
+              Tab(icon: Icon(Icons.queue_music_rounded), text: 'پلی‌لیست‌ها'),
             ],
           ),
         ),
@@ -572,6 +816,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   _buildLibraryTab(colors),
                   _buildLyricsTab(colors),
                   _buildBookmarksTab(colors),
+              _buildPlaylistsTab(colors),
                 ],
               ),
             ),
@@ -895,11 +1140,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             icon: const Icon(Icons.lyrics_outlined),
                             color: colors.primary,
                           ),
-                          Text(
-                            'نشانک / متن ویس',
-                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  color: colors.onSurfaceVariant,
-                                ),
+                          IconButton(
+                            tooltip: 'افزودن فایل فعلی به پلی‌لیست',
+                            onPressed: track == null
+                                ? null
+                                : () => _tabController.animateTo(3),
+                            icon: const Icon(Icons.playlist_add_rounded),
+                            color: colors.primary,
                           ),
                         ],
                       ),
