@@ -793,6 +793,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       .toDouble();
                   return Column(
                     children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Listener(
+                            onPointerDown: _onBookmarkPointerDown,
+                            onPointerUp: _onBookmarkPointerEnd,
+                            onPointerCancel: _onBookmarkPointerEnd,
+                            child: IconButton(
+                              tooltip: 'لمس: ثبت نشانک | نگه‌داشتن ۳ ثانیه: نمایش فهرست نشانک‌ها',
+                              onPressed: track == null ? null : _handleBookmarkTap,
+                              icon: const Icon(Icons.bookmark_add_outlined),
+                              color: colors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'نشانک این لحظه',
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
                       Slider(
                         value: value,
                         max: max > 0 ? max : 1,
