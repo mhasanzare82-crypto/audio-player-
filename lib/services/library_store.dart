@@ -5,6 +5,7 @@ import '../models/audio_track.dart';
 class LibraryStore {
   static const _tracksKey = 'audio_library_v1';
   static const _lyricsKey = 'audio_lyrics_v1';
+  static const _foldersKey = 'audio_library_folders_v1';
 
   Future<List<AudioTrack>> loadTracks() async {
     final prefs = await SharedPreferences.getInstance();
@@ -14,6 +15,25 @@ class LibraryStore {
   Future<void> saveTracks(List<AudioTrack> tracks) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tracksKey, AudioTrack.encodeList(tracks));
+  }
+
+  Future<List<Map<String, String>>> loadFolders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_foldersKey);
+    if (raw == null || raw.isEmpty) return [];
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    return decoded
+        .whereType<Map<String, dynamic>>()
+        .map((item) => {
+              'uri': item['uri'].toString(),
+              'name': item['name'].toString(),
+            })
+        .toList();
+  }
+
+  Future<void> saveFolders(List<Map<String, String>> folders) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_foldersKey, jsonEncode(folders));
   }
 
   Future<Map<String, String>> loadLyrics() async {
