@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/audio_bookmark.dart';
 import '../models/audio_track.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
@@ -25,7 +26,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final AudioPlayer _player = AudioPlayer();
   final LibraryStore _store = LibraryStore();
   final FolderLibraryService _folderService = FolderLibraryService();
@@ -36,6 +37,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _shuffle = false;
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
+  late final TabController _tabController;
+  Timer? _bookmarkHoldTimer;
+  bool _bookmarkHoldTriggered = false;
+  final List<AudioBookmark> _bookmarks = [];
 
   AudioTrack? get _currentTrack =>
       _currentIndex >= 0 && _currentIndex < _tracks.length
@@ -45,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
@@ -62,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final saved = await _store.loadTracks();
       final lyrics = await _store.loadLyrics();
+      final savedBookmarks = await _store.loadBookmarks();
       final available = saved
           .where((track) => track.path.startsWith('content://') ||
               File(track.path).existsSync())
@@ -70,6 +77,10 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _tracks.addAll(available);
         _lyrics = lyrics;
+        _bookmarks
+          ..clear()
+          ..addAll(savedBookmarks.where((bookmark) =>
+              available.any((track) => track.path == bookmark.audioPath)));
         _loading = false;
       });
       if (_tracks.isNotEmpty) {
@@ -77,6 +88,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (available.length != saved.length) {
         await _store.saveTracks(_tracks);
+      }
+      if (_bookmarks.length != savedBookmarks.length) {
+        await _store.saveBookmarks(_bookmarks);
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -290,6 +304,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _removeTrack(int index) async {
     if (index < 0 || index >= _tracks.length) return;
     final removed = _tracks.removeAt(index);
+    _bookmarks.removeWhere((bookmark) => bookmark.audioPath == removed.path);
+    await _store.saveBookmarks(_bookmarks);
     _lyrics.remove(removed.path);
     await _store.saveLyrics(_lyrics);
     await _persistTracks();
@@ -300,6 +316,159 @@ class _HomeScreenState extends State<HomeScreen> {
       await _replacePlaylist(autoplay: false);
     }
     if (mounted) setState(() {});
+  }
+
+  void _onBookmarkPointerDown(PointerDownEvent event) {
+    _bookmarkHoldTriggered = false;
+    _bookmarkHoldTimer?.cancel();
+    _bookmarkHoldTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _bookmarkHoldTriggered = true;
+      _tabController.animateTo(2);
+    });
+  }
+
+  void _onBookmarkPointerEnd(PointerEvent event) {
+    _bookmarkHoldTimer?.cancel();
+  }
+
+  void _handleBookmarkTap() {
+    if (_bookmarkHoldTriggered) {
+      _bookmarkHoldTriggered = false;
+      return;
+    }
+    unawaited(_addBookmark());
+  }
+
+  Future<void> _addBookmark() async {
+    final track = _currentTrack;
+    if (track == null) return;
+    final now = DateTime.now();
+    final bookmark = AudioBookmark(
+      id: now.microsecondsSinceEpoch.toString(),
+      audioPath: track.path,
+      audioTitle: track.title,
+      positionMs: _player.position.inMilliseconds,
+      createdAt: now,
+    );
+    setState(() {
+      _bookmarks.add(bookmark);
+      _bookmarks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    });
+    await _store.saveBookmarks(_bookmarks);
+    _showMessage(
+      'نشانک در ${_formatDuration(Duration(milliseconds: bookmark.positionMs))} ذخیره شد.',
+    );
+  }
+
+  Future<void> _removeBookmark(String id) async {
+    setState(() => _bookmarks.removeWhere((bookmark) => bookmark.id == id));
+    await _store.saveBookmarks(_bookmarks);
+  }
+
+  Future<void> _jumpToBookmark(AudioBookmark bookmark) async {
+    final trackIndex = _tracks.indexWhere(
+      (track) => track.path == bookmark.audioPath,
+    );
+    if (trackIndex < 0) {
+      _showMessage('فایل صوتی این نشانک در کتابخانه پیدا نشد.');
+      return;
+    }
+    try {
+      await _player.pause();
+      if (_player.sequence.length != _tracks.length) {
+        await _replacePlaylist(autoplay: false);
+      }
+      await _player.seek(
+        Duration(milliseconds: bookmark.positionMs),
+        index: trackIndex,
+      );
+      if (mounted) setState(() {});
+    } catch (error) {
+      _showMessage('رفتن به نشانک ناموفق بود: $error');
+    }
+  }
+
+  String _formatDateTime(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}/${two(value.month)}/${two(value.day)}  ${two(value.hour)}:${two(value.minute)}';
+  }
+
+  Widget _buildBookmarksTab(ColorScheme colors) {
+    if (_bookmarks.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.bookmarks_outlined, size: 58, color: colors.primary),
+              const SizedBox(height: 12),
+              const Text(
+                'هنوز نشانکی ثبت نشده است.',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'هنگام پخش فایل، نشانگر بالای نوار زمان را لمس کن.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final items = List<AudioBookmark>.from(_bookmarks)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
+      itemCount: items.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 7),
+      itemBuilder: (context, index) {
+        final bookmark = items[index];
+        final trackIndex = _tracks.indexWhere(
+          (track) => track.path == bookmark.audioPath,
+        );
+        final selected = trackIndex == _currentIndex;
+        return Card(
+          child: ListTile(
+            leading: Icon(
+              Icons.music_note_rounded,
+              color: selected ? colors.primary : colors.onSurfaceVariant,
+            ),
+            title: Text(
+              bookmark.audioTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              '${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  ${_formatDateTime(bookmark.createdAt)}',
+            ),
+            onTap: trackIndex < 0 ? null : () => _jumpToBookmark(bookmark),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'رفتن به زمان نشانک',
+                  onPressed: trackIndex < 0
+                ? null
+                : () => _jumpToBookmark(bookmark),
+                  icon: const Icon(Icons.bookmark_rounded),
+                  color: colors.primary,
+                ),
+                IconButton(
+                  tooltip: 'حذف نشانک',
+                  onPressed: () => _removeBookmark(bookmark.id),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _saveLyrics(String path, String value) async {
@@ -350,6 +519,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _bookmarkHoldTimer?.cancel();
+    _tabController.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -357,9 +528,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
           title: const Text(
             'پلیر صوتی',
@@ -378,10 +547,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(width: 6),
           ],
-          bottom: const TabBar(
-            tabs: [
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
               Tab(icon: Icon(Icons.library_music_outlined), text: 'کتابخانه صوتی'),
               Tab(icon: Icon(Icons.notes_rounded), text: 'متن ویس'),
+              Tab(icon: Icon(Icons.bookmarks_outlined), text: 'نشانک‌ها'),
             ],
           ),
         ),
@@ -389,17 +560,18 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Expanded(
               child: TabBarView(
+                controller: _tabController,
                 children: [
                   _buildLibraryTab(colors),
                   _buildLyricsTab(colors),
+                  _buildBookmarksTab(colors),
                 ],
               ),
             ),
             _buildPlayerPanel(colors),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildLibraryTab(ColorScheme colors) {
@@ -618,6 +790,30 @@ class _HomeScreenState extends State<HomeScreen> {
                       .toDouble();
                   return Column(
                     children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Listener(
+                            onPointerDown: _onBookmarkPointerDown,
+                            onPointerUp: _onBookmarkPointerEnd,
+                            onPointerCancel: _onBookmarkPointerEnd,
+                            child: IconButton(
+                              tooltip:
+                      'لمس: ثبت نشانک | نگه‌داشتن ۳ ثانیه: نمایش فهرست نشانک‌ها',
+                              onPressed: track == null ? null : _handleBookmarkTap,
+                              icon: const Icon(Icons.bookmark_add_outlined),
+                              color: colors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'نشانک این لحظه',
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
                       Slider(
                         value: value,
                         max: max > 0 ? max : 1,
