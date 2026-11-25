@@ -522,6 +522,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _bookmarkHoldTimer?.cancel();
+    _tabController.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -529,9 +531,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
           title: const Text(
             'پلیر صوتی',
@@ -550,10 +550,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(width: 6),
           ],
-          bottom: const TabBar(
-            tabs: [
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
               Tab(icon: Icon(Icons.library_music_outlined), text: 'کتابخانه صوتی'),
               Tab(icon: Icon(Icons.notes_rounded), text: 'متن ویس'),
+              Tab(icon: Icon(Icons.bookmarks_outlined), text: 'نشانک‌ها'),
             ],
           ),
         ),
@@ -561,17 +563,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           children: [
             Expanded(
               child: TabBarView(
+                controller: _tabController,
                 children: [
                   _buildLibraryTab(colors),
                   _buildLyricsTab(colors),
+                  _buildBookmarksTab(colors),
                 ],
               ),
             ),
             _buildPlayerPanel(colors),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildLibraryTab(ColorScheme colors) {
