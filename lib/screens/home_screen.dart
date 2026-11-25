@@ -40,6 +40,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final TabController _tabController;
   Timer? _bookmarkHoldTimer;
   bool _bookmarkHoldTriggered = false;
+  Timer? _lyricsHoldTimer;
+  bool _lyricsHoldTriggered = false;
+  bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
 
   AudioTrack? get _currentTrack =>
@@ -54,7 +57,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
-      setState(() => _currentIndex = index ?? -1);
+      setState(() {
+        _currentIndex = index ?? -1;
+        _lyricsEditing = false;
+      });
     });
     _player.shuffleModeEnabledStream.listen((value) {
       if (mounted) setState(() => _shuffle = value);
@@ -520,6 +526,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _bookmarkHoldTimer?.cancel();
+    _lyricsHoldTimer?.cancel();
     _tabController.dispose();
     _player.dispose();
     super.dispose();
@@ -694,6 +701,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _onLyricsPointerDown(PointerDownEvent event) {
+    _lyricsHoldTriggered = false;
+    _lyricsHoldTimer?.cancel();
+    _lyricsHoldTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _lyricsHoldTriggered = true;
+      setState(() => _lyricsEditing = true);
+    });
+  }
+
+  void _onLyricsPointerEnd(PointerEvent event) {
+    _lyricsHoldTimer?.cancel();
+  }
+
   Widget _buildLyricsTab(ColorScheme colors) {
     final track = _currentTrack;
     if (track == null) {
@@ -720,11 +741,68 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       );
     }
-    return _LyricsEditor(
-      key: ValueKey(track.path),
-      track: track,
-      initialText: _lyrics[track.path] ?? '',
-      onSave: (value) => _saveLyrics(track.path, value),
+    if (_lyricsEditing) {
+      return _LyricsEditor(
+        key: ValueKey('edit-${track.path}'),
+        track: track,
+        initialText: _lyrics[track.path] ?? '',
+        onSave: (value) => _saveLyrics(track.path, value),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: colors.primary, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Expanded(
+            child: Listener(
+              onPointerDown: _onLyricsPointerDown,
+              onPointerUp: _onLyricsPointerEnd,
+              onPointerCancel: _onLyricsPointerEnd,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: SingleChildScrollView(
+                  child: Text(
+                    (_lyrics[track.path] ?? '').trim().isEmpty
+                        ? 'هنوز متنی برای این فایل ثبت نشده است. برای نوشتن متن، سه ثانیه روی این قسمت نگه دار.'
+                        : _lyrics[track.path]!,
+                    textDirection: TextDirection.rtl,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.8),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'برای ویرایش، سه ثانیه روی متن نگه دار.',
+                  style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () async {
+                  await _store.saveLyrics(_lyrics);
+                  _showMessage('متن ویس ذخیره شد.');
+                },
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('ذخیره'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -806,8 +884,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                           ),
                           const SizedBox(width: 6),
+                          IconButton(
+                            tooltip: 'نمایش متن همین فایل صوتی',
+                            onPressed: track == null
+                                ? null
+                                : () {
+                                    setState(() => _lyricsEditing = false);
+                                    _tabController.animateTo(1);
+                                  },
+                            icon: const Icon(Icons.lyrics_outlined),
+                            color: colors.primary,
+                          ),
                           Text(
-                            'نشانک این لحظه',
+                            'نشانک / متن ویس',
                             style: Theme.of(context).textTheme.labelMedium?.copyWith(
                                   color: colors.onSurfaceVariant,
                                 ),
