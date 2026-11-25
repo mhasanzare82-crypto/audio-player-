@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _shuffle = false;
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
+  double _volume = 1;
   late final TabController _tabController;
   Timer? _bookmarkHoldTimer;
   bool _bookmarkHoldTriggered = false;
@@ -57,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _configureAudioSession();
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
@@ -73,8 +76,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
+  Future<void> _configureAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(
+        AudioSessionConfiguration.music().copyWith(
+          androidAudioFocusGainType: AndroidAudioFocusGainType.none,
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.mixWithOthers,
+        ),
+      );
+    } catch (error) {
+      debugPrint('Audio session configuration failed: $error');
+    }
+  }
+
   Future<void> _restoreLibrary() async {
     try {
+      final savedVolume = await _store.loadVolume();
+      await _player.setVolume(savedVolume);
+      if (mounted) setState(() => _volume = savedVolume);
       final saved = await _store.loadTracks();
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
@@ -286,6 +307,67 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (error) {
       _showMessage('اسکن پوشه‌ها ناموفق بود: $error');
     }
+  }
+
+  Future<void> _setPlayerVolume(double value) async {
+    final normalized = value.clamp(0.0, 1.0).toDouble();
+    if (mounted) setState(() => _volume = normalized);
+    await _player.setVolume(normalized);
+    await _store.saveVolume(normalized);
+  }
+
+  Future<void> _showVolumeSettings() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.volume_up_outlined),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('صدای خروجی پلیر')),
+                  Text('${(_volume * 100).round()}%'),
+                ],
+              ),
+              Slider(
+                value: _volume,
+                min: 0,
+                max: 1,
+                divisions: 100,
+                label: '${(_volume * 100).round()}%',
+                onChanged: (value) {
+                  setSheetState(() {});
+                  _setPlayerVolume(value);
+                },
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () => _setPlayerVolume(0),
+                    child: const Text('بی‌صدا'),
+                  ),
+                  TextButton(
+                    onPressed: () => _setPlayerVolume(1),
+                    child: const Text('صدای کامل'),
+                  ),
+                ],
+              ),
+              Text(
+                'این تنظیم فقط بلندی صدای همین پلیر را تغییر می‌دهد و صدای کلی گوشی را تنظیم نمی‌کند.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _replacePlaylist({required bool autoplay}) async {
@@ -1081,6 +1163,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'تنظیم صدای پلیر',
+                    onPressed: _showVolumeSettings,
+                    icon: Icon(
+                      _volume == 0
+                          ? Icons.volume_off_rounded
+                          : _volume < 0.5
+                              ? Icons.volume_down_rounded
+                              : Icons.volume_up_rounded,
+                      color: colors.primary,
                     ),
                   ),
                   PopupMenuButton<double>(
