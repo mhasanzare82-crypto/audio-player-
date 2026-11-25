@@ -318,6 +318,162 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (mounted) setState(() {});
   }
 
+  void _onBookmarkPointerDown(PointerDownEvent event) {
+    _bookmarkHoldTriggered = false;
+    _bookmarkHoldTimer?.cancel();
+    _bookmarkHoldTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _bookmarkHoldTriggered = true;
+      _tabController.animateTo(2);
+    });
+  }
+
+  void _onBookmarkPointerEnd(PointerEvent event) {
+    _bookmarkHoldTimer?.cancel();
+  }
+
+  void _handleBookmarkTap() {
+    if (_bookmarkHoldTriggered) {
+      _bookmarkHoldTriggered = false;
+      return;
+    }
+    unawaited(_addBookmark());
+  }
+
+  Future<void> _addBookmark() async {
+    final track = _currentTrack;
+    if (track == null) return;
+    final now = DateTime.now();
+    final bookmark = AudioBookmark(
+      id: now.microsecondsSinceEpoch.toString(),
+      audioPath: track.path,
+      audioTitle: track.title,
+      positionMs: _player.position.inMilliseconds,
+      createdAt: now,
+    );
+    setState(() {
+      _bookmarks.add(bookmark);
+      _bookmarks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    });
+    await _store.saveBookmarks(_bookmarks);
+    _showMessage(
+      'نشانک در ${_formatDuration(Duration(milliseconds: bookmark.positionMs))} ذخیره شد.',
+    );
+  }
+
+  Future<void> _removeBookmark(String id) async {
+    setState(() => _bookmarks.removeWhere((bookmark) => bookmark.id == id));
+    await _store.saveBookmarks(_bookmarks);
+  }
+
+  Future<void> _jumpToBookmark(AudioBookmark bookmark) async {
+    final trackIndex = _tracks.indexWhere(
+      (track) => track.path == bookmark.audioPath,
+    );
+    if (trackIndex < 0) {
+      _showMessage('فایل صوتی این نشانک در کتابخانه پیدا نشد.');
+      return;
+    }
+    try {
+      await _player.pause();
+      if (_player.sequence.length != _tracks.length) {
+        await _replacePlaylist(autoplay: false);
+      }
+      var sequenceIndex = trackIndex;
+      if (_shuffle) {
+        final shuffledIndex = _player.shuffleIndices?.indexOf(trackIndex) ?? -1;
+        if (shuffledIndex >= 0) sequenceIndex = shuffledIndex;
+      }
+      await _player.seek(
+        Duration(milliseconds: bookmark.positionMs),
+        index: sequenceIndex,
+      );
+      if (mounted) setState(() {});
+    } catch (error) {
+      _showMessage('رفتن به نشانک ناموفق بود: $error');
+    }
+  }
+
+  String _formatDateTime(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}/${two(value.month)}/${two(value.day)}  ${two(value.hour)}:${two(value.minute)}';
+  }
+
+  Widget _buildBookmarksTab(ColorScheme colors) {
+    if (_bookmarks.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.bookmarks_outlined, size: 58, color: colors.primary),
+              const SizedBox(height: 12),
+              const Text(
+                'هنوز نشانکی ثبت نشده است.',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'هنگام پخش فایل، نشانگر بالای نوار زمان را لمس کن.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final items = List<AudioBookmark>.from(_bookmarks)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
+      itemCount: items.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 7),
+      itemBuilder: (context, index) {
+        final bookmark = items[index];
+        final trackIndex = _tracks.indexWhere(
+          (track) => track.path == bookmark.audioPath,
+        );
+        final selected = trackIndex == _currentIndex;
+        return Card(
+          child: ListTile(
+            leading: Icon(
+              Icons.music_note_rounded,
+              color: selected ? colors.primary : colors.onSurfaceVariant,
+            ),
+            title: Text(
+              bookmark.audioTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              '${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  ${_formatDateTime(bookmark.createdAt)}',
+            ),
+            onTap: trackIndex < 0 ? null : () => _jumpToBookmark(bookmark),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'رفتن به زمان نشانک',
+                  onPressed: trackIndex < 0 ? null : () => _jumpToBookmark(bookmark),
+                  icon: const Icon(Icons.bookmark_rounded),
+                  color: colors.primary,
+                ),
+                IconButton(
+                  tooltip: 'حذف نشانک',
+                  onPressed: () => _removeBookmark(bookmark.id),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _saveLyrics(String path, String value) async {
     _lyrics[path] = value;
     await _store.saveLyrics(_lyrics);
