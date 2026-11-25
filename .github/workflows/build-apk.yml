@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/concurrent-audio-mixing]
   workflow_dispatch:
 
 permissions:
