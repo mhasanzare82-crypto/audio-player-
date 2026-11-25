@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/audio_track.dart';
+import '../models/audio_bookmark.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 
@@ -25,7 +26,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final AudioPlayer _player = AudioPlayer();
   final LibraryStore _store = LibraryStore();
   final FolderLibraryService _folderService = FolderLibraryService();
@@ -36,6 +37,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _shuffle = false;
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
+  late final TabController _tabController;
+  Timer? _bookmarkHoldTimer;
+  bool _bookmarkHoldTriggered = false;
+  final List<AudioBookmark> _bookmarks = [];
 
   AudioTrack? get _currentTrack =>
       _currentIndex >= 0 && _currentIndex < _tracks.length
@@ -45,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
@@ -62,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final saved = await _store.loadTracks();
       final lyrics = await _store.loadLyrics();
+      final savedBookmarks = await _store.loadBookmarks();
       final available = saved
           .where((track) => track.path.startsWith('content://') ||
               File(track.path).existsSync())
@@ -70,6 +77,10 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _tracks.addAll(available);
         _lyrics = lyrics;
+        _bookmarks
+          ..clear()
+          ..addAll(savedBookmarks.where((bookmark) =>
+              available.any((track) => track.path == bookmark.audioPath)));
         _loading = false;
       });
       if (_tracks.isNotEmpty) {
@@ -77,6 +88,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (available.length != saved.length) {
         await _store.saveTracks(_tracks);
+      }
+      if (_bookmarks.length != savedBookmarks.length) {
+        await _store.saveBookmarks(_bookmarks);
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -290,6 +304,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _removeTrack(int index) async {
     if (index < 0 || index >= _tracks.length) return;
     final removed = _tracks.removeAt(index);
+    _bookmarks.removeWhere((bookmark) => bookmark.audioPath == removed.path);
+    await _store.saveBookmarks(_bookmarks);
     _lyrics.remove(removed.path);
     await _store.saveLyrics(_lyrics);
     await _persistTracks();
