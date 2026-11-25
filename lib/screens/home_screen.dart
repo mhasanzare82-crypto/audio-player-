@@ -109,10 +109,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (_bookmarks.length != savedBookmarks.length) {
         await _store.saveBookmarks(_bookmarks);
       }
-      if (_playlists.length != savedPlaylists.length ||
-          _playlists.any((playlist) => playlist.trackPaths.length !=
-              savedPlaylists.firstWhere((savedPlaylist) => savedPlaylist.id == playlist.id,
-                  orElse: () => playlist).trackPaths.length)) {
+      if (AudioPlaylist.encodeList(_playlists) !=
+          AudioPlaylist.encodeList(savedPlaylists)) {
         await _store.savePlaylists(_playlists);
       }
     } catch (_) {
@@ -662,16 +660,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         title: Text(playlist.name,
                             style: const TextStyle(fontWeight: FontWeight.w700)),
                         subtitle: Text('${tracks.length} فایل صوتی'),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (value) {
-                            if (value == 'add') _addCurrentTrackToPlaylist(playlist);
-                            if (value == 'delete') _deletePlaylist(playlist);
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(
-                                value: 'add', child: Text('افزودن فایل در حال پخش')),
-                            PopupMenuItem(
-                                value: 'delete', child: Text('حذف پلی‌لیست')),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'افزودن فایل فعلی به این پلی‌لیست',
+                              onPressed: current == null
+                                  ? null
+                                  : () => _addCurrentTrackToPlaylist(playlist),
+                              icon: const Icon(Icons.playlist_add_rounded),
+                            ),
+                            PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'delete') _deletePlaylist(playlist);
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('حذف پلی‌لیست'),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                         children: [
@@ -816,7 +825,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   _buildLibraryTab(colors),
                   _buildLyricsTab(colors),
                   _buildBookmarksTab(colors),
-              _buildPlaylistsTab(colors),
+                  _buildPlaylistsTab(colors),
                 ],
               ),
             ),
