@@ -13,6 +13,7 @@ import '../models/audio_playlist.dart';
 import '../models/audio_track.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
+import '../services/scheduled_playback_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -44,7 +45,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Timer? _bookmarkHoldTimer;
   bool _bookmarkHoldTriggered = false;
   Timer? _lyricsHoldTimer;
-  bool _lyricsHoldTriggered = false;
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
   final List<AudioPlaylist> _playlists = [];
@@ -60,6 +60,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _configureAudioSession();
+    ScheduledPlaybackService.setStopHandler(() async {
+      await _player.stop();
+      _showMessage('پخش صوت طبق زمان‌بندی متوقف شد.');
+    });
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
@@ -81,7 +85,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final session = await AudioSession.instance;
       await session.configure(
         AudioSessionConfiguration.music().copyWith(
-          androidAudioFocusGainType: AndroidAudioFocusGainType.none,
           avAudioSessionCategoryOptions:
               AVAudioSessionCategoryOptions.mixWithOthers,
         ),
@@ -850,6 +853,112 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         : '${two(minutes)}:${two(seconds)}';
   }
 
+  Future<DateTime?> _chooseScheduleDateTime(String title) async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 2),
+      helpText: title,
+    );
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5))),
+      helpText: 'ساعت اجرا',
+    );
+    if (time == null) return null;
+    final scheduled = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (!scheduled.isAfter(DateTime.now())) {
+      _showMessage('زمان انتخاب‌شده باید در آینده باشد.');
+      return null;
+    }
+    return scheduled;
+  }
+
+  Future<void> _scheduleStartDialog() async {
+    if (_tracks.isEmpty) {
+      _showMessage('ابتدا یک فایل صوتی به کتابخانه اضافه کن.');
+      return;
+    }
+    String selectedPath = _currentTrack?.path ?? _tracks.first.path;
+    final path = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('شروع خودکار پخش'),
+          content: DropdownButtonFormField<String>(
+            initialValue: selectedPath,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'فایل صوتی'),
+            items: _tracks.map((track) => DropdownMenuItem<String>(
+              value: track.path,
+              child: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            )).toList(),
+            onChanged: (value) {
+              if (value != null) setDialogState(() => selectedPath = value);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selectedPath),
+              child: const Text('انتخاب زمان'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (path == null || !mounted) return;
+    final at = await _chooseScheduleDateTime('تاریخ شروع پخش');
+    if (at == null) return;
+    final track = _tracks.firstWhere((item) => item.path == path);
+    try {
+      await ScheduledPlaybackService.scheduleStart(path: track.path, title: track.title, at: at);
+      _showMessage('شروع پخش «${track.title}» برای ${_formatScheduleDateTime(at)} تنظیم شد.');
+    } catch (error) {
+      _showMessage('تنظیم شروع خودکار ناموفق بود: $error');
+    }
+  }
+
+  Future<void> _scheduleStopDialog() async {
+    final at = await _chooseScheduleDateTime('تاریخ توقف پخش');
+    if (at == null) return;
+    try {
+      await ScheduledPlaybackService.scheduleStop(at: at);
+      _showMessage('توقف پخش برای ${_formatScheduleDateTime(at)} تنظیم شد.');
+    } catch (error) {
+      _showMessage('تنظیم توقف خودکار ناموفق بود: $error');
+    }
+  }
+
+  String _formatScheduleDateTime(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(value.year % 100)}/${two(value.month)}/${two(value.day)} - ${two(value.hour)}:${two(value.minute)}';
+  }
+
+  Future<void> _cancelScheduledStart() async {
+    try {
+      await ScheduledPlaybackService.cancelStart();
+      _showMessage('شروع خودکار لغو شد.');
+    } catch (error) {
+      _showMessage('لغو زمان شروع ناموفق بود: $error');
+    }
+  }
+
+  Future<void> _cancelScheduledStop() async {
+    try {
+      await ScheduledPlaybackService.cancelStop();
+      _showMessage('توقف خودکار لغو شد.');
+    } catch (error) {
+      _showMessage('لغو زمان توقف ناموفق بود: $error');
+    }
+  }
+
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -880,6 +989,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               tooltip: 'به‌روزرسانی کتابخانه',
               onPressed: _openFolderManager,
               icon: const Icon(Icons.sync),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'زمان‌بندی پخش',
+              icon: const Icon(Icons.schedule),
+              onSelected: (value) {
+                if (value == 'start') _scheduleStartDialog();
+                if (value == 'stop') _scheduleStopDialog();
+                if (value == 'cancel_start') _cancelScheduledStart();
+                if (value == 'cancel_stop') _cancelScheduledStop();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'start', child: Text('تنظیم شروع خودکار')),
+                PopupMenuItem(value: 'stop', child: Text('تنظیم توقف خودکار')),
+                PopupMenuDivider(),
+                PopupMenuItem(value: 'cancel_start', child: Text('لغو شروع خودکار')),
+                PopupMenuItem(value: 'cancel_stop', child: Text('لغو توقف خودکار')),
+              ],
             ),
             IconButton(
               tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
@@ -1038,11 +1164,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _onLyricsPointerDown(PointerDownEvent event) {
-    _lyricsHoldTriggered = false;
     _lyricsHoldTimer?.cancel();
     _lyricsHoldTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
-      _lyricsHoldTriggered = true;
       setState(() => _lyricsEditing = true);
     });
   }
