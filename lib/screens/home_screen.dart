@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../models/audio_track.dart';
 import '../models/audio_bookmark.dart';
+import '../models/audio_track.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 
@@ -452,7 +452,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               children: [
                 IconButton(
                   tooltip: 'رفتن به زمان نشانک',
-                  onPressed: trackIndex < 0 ? null : () => _jumpToBookmark(bookmark),
+                  onPressed: trackIndex < 0
+                ? null
+                : () => _jumpToBookmark(bookmark),
                   icon: const Icon(Icons.bookmark_rounded),
                   color: colors.primary,
                 ),
@@ -796,7 +798,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             onPointerUp: _onBookmarkPointerEnd,
                             onPointerCancel: _onBookmarkPointerEnd,
                             child: IconButton(
-                              tooltip: 'لمس: ثبت نشانک | نگه‌داشتن ۳ ثانیه: نمایش فهرست نشانک‌ها',
+                              tooltip:
+                      'لمس: ثبت نشانک | نگه‌داشتن ۳ ثانیه: نمایش فهرست نشانک‌ها',
                               onPressed: track == null ? null : _handleBookmarkTap,
                               icon: const Icon(Icons.bookmark_add_outlined),
                               color: colors.primary,
