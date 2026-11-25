@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/audio_track.dart';
 import '../models/audio_bookmark.dart';
+import '../models/audio_playlist.dart';
 
 class LibraryStore {
   static const _tracksKey = 'audio_library_v1';
   static const _lyricsKey = 'audio_lyrics_v1';
   static const _foldersKey = 'audio_library_folders_v1';
   static const _bookmarksKey = 'audio_bookmarks_v1';
+  static const _playlistsKey = 'audio_playlists_v1';
 
   Future<List<AudioTrack>> loadTracks() async {
     final prefs = await SharedPreferences.getInstance();
@@ -36,6 +38,16 @@ class LibraryStore {
       _bookmarksKey,
       jsonEncode(bookmarks.map((bookmark) => bookmark.toJson()).toList()),
     );
+  }
+
+  Future<List<AudioPlaylist>> loadPlaylists() async {
+    final prefs = await SharedPreferences.getInstance();
+    return AudioPlaylist.decodeList(prefs.getString(_playlistsKey));
+  }
+
+  Future<void> savePlaylists(List<AudioPlaylist> playlists) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_playlistsKey, AudioPlaylist.encodeList(playlists));
   }
 
   Future<List<Map<String, String>>> loadFolders() async {
