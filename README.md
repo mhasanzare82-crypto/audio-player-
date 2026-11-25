@@ -1,19 +1,25 @@
-# EXM1
+# پلیر صوتی
 
-A new Flutter project created with FlutLab - https://flutlab.io
+اپلیکیشن اندرویدی Flutter برای مدیریت و پخش فایل‌های صوتی و نگهداری متن اختصاصی هر ویس.
 
-## Getting Started
+## قابلیت‌ها
 
-A few resources to get you started if this is your first Flutter project:
+- افزودن چند فایل صوتی و پشتیبانی از MP3، WAV، FLAC، AAC و M4A
+- انتخاب چند پوشه و اسکن بازگشتی پوشه‌ها و زیرپوشه‌ها با نگهداری دسترسی پایدار Android SAF
+- جلوگیری از ثبت دوباره فایل‌های تکراری در کتابخانه
+- ذخیره نشانک زمانی برای هر فایل صوتی و بازگشت به موقعیت ثبت‌شده
+- یادداشت/متن مستقل برای هر ویس، ذخیره خودکار و جست‌وجو در متن همان ویس
+- ساخت و مدیریت فهرست‌های پخش
+- تنظیم صدای خروجی خود پلیر به‌صورت مستقل و ذخیره تنظیم انتخاب‌شده
+- پیکربندی Audio Session برای امکان میکس صدا با سایر برنامه‌ها
+- حالت روشن و تاریک
 
-- https://flutter.dev/docs/get-started/codelab
-- https://flutter.dev/docs/cookbook
+## ساخت APK
 
-For help getting started with Flutter, view our
-https://flutter.dev/docs, which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+ساخت خودکار از طریق GitHub Actions انجام می‌شود. پس از موفقیت workflow با نام **Build Android APK**، فایل APK از بخش **Artifacts** با نام `audio-player-release` قابل دریافت است.
 
-## Getting Started: FlutLab - Flutter Online IDE
+نسخه Flutter مورد استفاده در workflow: `3.41.2`.
 
-- How to use FlutLab? Please, view our https://flutlab.io/docs
-- Join the discussion and conversation on https://flutlab.io/residents
+## نکته درباره زمان‌بندی
+
+قابلیت زمان‌بندی اجرای خودکار پخش پس از بسته‌شدن برنامه و توقف زمان‌بندی‌شده هنوز در این نسخه پیاده‌سازی نشده است.
