@@ -30,7 +30,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
-  final AudioPlayer _player = AudioPlayer();
+  // Android audio focus is intentionally not requested so this player can
+  // mix with audio from other apps and with the second app installation.
+  // iOS keeps normal session activation; its session is configured to mix.
+  final AudioPlayer _player = AudioPlayer(
+    handleInterruptions: false,
+    handleAudioSessionActivation: !Platform.isAndroid,
+  );
   final LibraryStore _store = LibraryStore();
   final FolderLibraryService _folderService = FolderLibraryService();
   final List<AudioTrack> _tracks = [];
