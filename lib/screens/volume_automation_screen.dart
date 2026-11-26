@@ -345,6 +345,13 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     await _persistLibrary();
   }
 
+  VolumeAutomationPattern? _patternForId(String id) {
+    for (final pattern in _patterns) {
+      if (pattern.id == id) return pattern;
+    }
+    return null;
+  }
+
   String _durationLabel(int milliseconds) {
     final totalSeconds = (milliseconds / 1000).round();
     final minutes = totalSeconds ~/ 60;
@@ -617,7 +624,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
               ..._sequence.asMap().entries.map((entry) {
                 final index = entry.key;
                 final item = entry.value;
-                final pattern = _patterns.where((p) => p.id == item.patternId).firstOrNull;
+                final pattern = _patternForId(item.patternId);
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
@@ -823,7 +830,7 @@ class _VolumeCurvePainter extends CustomPainter {
       final point = profile.points[i];
       final offset = Offset(
         plot.left + plot.width * point.timeMs / profile.durationMs,
-        plot.bottom - plot.height * point.volume,
+        plot.bottom - plot.height * (point.volume / 0.5),
       );
       canvas.drawCircle(
         offset,
