@@ -171,8 +171,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (available.length != saved.length) {
         await _store.saveTracks(_tracks);
       }
-    } catch (_) {
-      if (mounted) setState(() {});
+    } catch (error) {
+      debugPrint('Library restore failed: $error');
     }
   }
 
