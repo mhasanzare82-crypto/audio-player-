@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ui/compact-bottom-navigation, feature/volume-automation-curve, feature/freehand-volume-map]
+    branches: [main, ui/compact-bottom-navigation, feature/volume-automation-curve, feature/freehand-volume-map, feature/multi-pattern-volume-map]
   workflow_dispatch:
 
 permissions:
@@ -33,6 +33,9 @@ jobs:
 
       - name: Analyze Flutter project
         run: flutter analyze
+
+      - name: Run Flutter tests
+        run: flutter test
 
       - name: Build release APK
         run: flutter build apk --release
