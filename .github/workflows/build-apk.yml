@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ui/compact-bottom-navigation, feature/volume-automation-curve, feature/freehand-volume-map, feature/multi-pattern-volume-map]
+    branches: [main, ui/compact-bottom-navigation, feature/volume-automation-curve, feature/freehand-volume-map, feature/multi-pattern-volume-map, feature/inherit-volume-range-defaults]
   workflow_dispatch:
 
 permissions:
