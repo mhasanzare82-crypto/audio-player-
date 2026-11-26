@@ -95,38 +95,38 @@ class VolumeAutomationController {
   }
 
   void _updateSequence(int audioPositionMs) {
-    var totalDuration = 0;
-    for (final item in _sequence) {
-      totalDuration += _patterns[item.patternId]!.profile.durationMs;
-    }
-    if (totalDuration <= 0) {
+    // Stop at the actual end of the audio. The pattern sequence itself loops
+    // using its original durations and is never stretched or compressed.
+    final audioDuration = _audioDurationMs;
+    if (audioDuration != null && audioPositionMs >= audioDuration) {
       stop();
       return;
     }
 
-    final scale = (_audioDurationMs != null && totalDuration > _audioDurationMs!)
-        ? _audioDurationMs! / totalDuration
-        : 1.0;
-    var cursor = 0.0;
+    var cycleDurationMs = 0;
     for (final item in _sequence) {
-      final pattern = _patterns[item.patternId]!;
-      final segmentDuration = pattern.profile.durationMs * scale;
-      final segmentEnd = cursor + segmentDuration;
-      if (audioPositionMs < segmentEnd) {
-        final localMs = (audioPositionMs - cursor).clamp(0.0, segmentDuration);
-        final patternPosition = segmentDuration <= 0
-            ? 0
-            : (localMs / segmentDuration * pattern.profile.durationMs).round();
-        final sampledPosition = pattern.profile.repeat
-            ? patternPosition % pattern.profile.durationMs
-            : patternPosition.clamp(0, pattern.profile.durationMs).toInt();
-        _emit(pattern.profile.valueAt(sampledPosition));
-        return;
-      }
-      cursor = segmentEnd;
+      cycleDurationMs += _patterns[item.patternId]!.profile.durationMs;
+    }
+    if (cycleDurationMs <= 0) {
+      stop();
+      return;
     }
 
-    stop();
+    final cyclePositionMs = audioPositionMs % cycleDurationMs;
+    var cursorMs = 0;
+    for (final item in _sequence) {
+      final pattern = _patterns[item.patternId]!;
+      final segmentEndMs = cursorMs + pattern.profile.durationMs;
+      if (cyclePositionMs < segmentEndMs) {
+        final localMs = cyclePositionMs - cursorMs;
+        _emit(pattern.profile.valueAt(localMs));
+        return;
+      }
+      cursorMs = segmentEndMs;
+    }
+
+    // Defensive fallback for a boundary caused by integer rounding.
+    _emit(_patterns[_sequence.first.patternId]!.profile.valueAt(0));
   }
 
   void stop({bool restoreBaseVolume = true}) {
