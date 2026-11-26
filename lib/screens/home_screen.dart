@@ -9,10 +9,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/audio_bookmark.dart';
 import '../models/audio_playlist.dart';
 import '../models/audio_track.dart';
+import '../models/volume_range.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 import '../services/scheduled_playback_service.dart';
@@ -49,6 +51,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
   double _volume = 1;
+  List<VolumeRange> _volumeRanges = [];
+  double? _lastAppliedVolume;
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
   bool _lyricsEditing = false;
@@ -66,6 +70,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _configureAudioSession();
+    _player.positionStream.listen((position) {
+      unawaited(_applyEffectiveVolume(position: position));
+    });
     ScheduledPlaybackService.setStopHandler(() async {
       await _player.stop();
       _showMessage('پخش صوت طبق زمان‌بندی متوقف شد.');
@@ -103,6 +110,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _restoreLibrary() async {
     try {
       final savedVolume = await _store.loadVolume();
+      final preferences = await SharedPreferences.getInstance();
+      final savedRanges = preferences.getString('volume_ranges_v1');
+      if (savedRanges != null) {
+        try {
+          _volumeRanges = (jsonDecode(savedRanges) as List<dynamic>)
+              .map((item) => VolumeRange.fromMap(
+                    Map<String, dynamic>.from(item as Map),
+                  ))
+              .toList()
+            ..sort((a, b) => a.startMs.compareTo(b.startMs));
+        } catch (error) {
+          debugPrint('Saved volume schedule is invalid: $error');
+          _volumeRanges = [];
+        }
+      }
       if (mounted) setState(() => _volume = savedVolume);
       await _applyEffectiveVolume();
       final saved = await _store.loadTracks();
@@ -403,8 +425,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _applyEffectiveVolume() async {
-    await _player.setVolume(_volume);
+  Future<void> _applyEffectiveVolume({Duration? position}) async {
+    final positionMs = (position ?? _player.position).inMilliseconds;
+    final effective = scheduledVolumeAt(_volumeRanges, positionMs, _volume);
+    if (_lastAppliedVolume != null &&
+        (effective - _lastAppliedVolume!).abs() < 0.0001) {
+      return;
+    }
+    _lastAppliedVolume = effective;
+    await _player.setVolume(effective);
   }
 
   Future<void> _setPlayerVolume(double value) async {
@@ -417,7 +446,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _openVolumeAutomation() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => const VolumeAutomationScreen(),
+        builder: (_) => VolumeAutomationScreen(
+          initialRanges: List<VolumeRange>.from(_volumeRanges),
+          onSave: (ranges) async {
+            final preferences = await SharedPreferences.getInstance();
+            await preferences.setString(
+              'volume_ranges_v1',
+              jsonEncode(ranges.map((range) => range.toMap()).toList()),
+            );
+            if (!mounted) return;
+            setState(() {
+              _volumeRanges = List<VolumeRange>.from(ranges)
+                ..sort((a, b) => a.startMs.compareTo(b.startMs));
+              _lastAppliedVolume = null;
+            });
+            await _applyEffectiveVolume();
+          },
+        ),
       ),
     );
   }
