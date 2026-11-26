@@ -31,11 +31,11 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     final totalSeconds = milliseconds ~/ 1000;
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
-    return '\${minutes.toString().padLeft(2, '0')}:\${seconds.toString().padLeft(2, '0')}';
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   int? _parseTime(String value) {
-    final match = RegExp(r'^(\\d{1,4}):([0-5]\\d)$').firstMatch(value.trim());
+    final match = RegExp(r'^(\d{1,4}):([0-5]\d)$').firstMatch(value.trim());
     if (match == null) return null;
     final minutes = int.parse(match.group(1)!);
     final seconds = int.parse(match.group(2)!);
@@ -246,13 +246,13 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                       return Card(
                         child: ListTile(
                           leading: CircleAvatar(
-                            child: Text('\${index + 1}'),
+                            child: Text('${index + 1}'),
                           ),
                           title: Text(
-                            '\${_formatTime(range.startMs)} تا \${_formatTime(range.endMs)}',
+                            '${_formatTime(range.startMs)} تا ${_formatTime(range.endMs)}',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
-                          subtitle: Text('میزان صدا: \${range.percent}٪'),
+                          subtitle: Text('میزان صدا: ${range.percent}٪'),
                           onTap: () => _editRange(existing: range, index: index),
                           trailing: IconButton(
                             tooltip: 'حذف بازه',
