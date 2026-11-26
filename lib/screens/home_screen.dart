@@ -1089,13 +1089,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           controller: _tabController,
           isScrollable: false,
           labelStyle: const TextStyle(
-            fontSize: 12,
+            fontSize: 10,
             fontWeight: FontWeight.w700,
-            height: 1.1,
+            height: 1.0,
           ),
           unselectedLabelStyle: const TextStyle(
-            fontSize: 11,
+            fontSize: 9,
             fontWeight: FontWeight.w500,
+            height: 1.0,
           ),
           labelPadding: EdgeInsets.zero,
           indicatorSize: TabBarIndicatorSize.label,
