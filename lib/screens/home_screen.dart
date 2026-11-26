@@ -1199,169 +1199,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildLibraryTab(ColorScheme colors) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'کتابخانه من',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_tracks.length} فایل صوتی • ${_libraryFolders.length} پوشه',
-                          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
-                    onPressed: _pickAudio,
-                    icon: const Icon(Icons.audio_file_rounded, size: 18),
-                    label: const Text('افزودن فایل'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    textStyle: const TextStyle(fontSize: 12),
-                  ),
-                  onPressed: _openFolderManager,
-                  icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-                  label: const Text('افزودن پوشه کتابخانه'),
-                ),
-              ),
-              if (_libraryFolders.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: _libraryFolders.map((folder) => Chip(
-                    avatar: const Icon(Icons.folder_outlined, size: 14),
-                    label: Text(
-                      folder['name'] ?? 'پوشه',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  )).toList(),
-                ),
-              ],
-            ],
-          ),
-        ),
-        Expanded(
-          child: _tracks.isEmpty
-              ? _emptyLibrary(colors)
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                  itemCount: _tracks.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 7),
-                  itemBuilder: (context, index) {
-                    final track = _tracks[index];
-                    final selected = index == _currentIndex;
-                    final extension = track.path.split('.').last.toUpperCase();
-                    return Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 5,
-                        ),
-                        leading: CircleAvatar(
-                          backgroundColor: selected
-                              ? colors.primaryContainer
-                              : colors.surfaceContainerHighest,
-                          child: Icon(
-                            selected ? Icons.equalizer : Icons.music_note,
-                            size: 20,
-                            color: selected
-                                ? colors.primary
-                                : colors.onSurfaceVariant,
-                          ),
-                        ),
-                        title: Text(
-                          track.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: selected ? FontWeight.bold : FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: Text(extension, style: const TextStyle(fontSize: 11)),
-                        onTap: () => _playTrack(index),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (value) {
-                            if (value == 'play') _playTrack(index);
-                            if (value == 'remove') _removeTrack(index);
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'play', child: Text('پخش')),
-                            PopupMenuItem(value: 'remove', child: Text('حذف از کتابخانه')),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _emptyLibrary(ColorScheme colors) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.audio_file_outlined, size: 44, color: colors.primary),
-            const SizedBox(height: 16),
-            const Text(
-              'هنوز فایلی اضافه نکرده‌ای',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'فایل‌های MP3، WAV، FLAC، AAC و M4A را از حافظه گوشی انتخاب کن.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-            ),
-            const SizedBox(height: 14),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                textStyle: const TextStyle(fontSize: 12),
-              ),
-              onPressed: _pickAudio,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('انتخاب فایل صوتی'),
-            ),
-          ],
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton.filledTonal(
+            tooltip: 'انتخاب فایل صوتی',
+            onPressed: _pickAudio,
+            icon: const Icon(Icons.audio_file_rounded, size: 28),
+            iconSize: 28,
+          ),
+          const SizedBox(width: 28),
+          IconButton.filledTonal(
+            tooltip: 'انتخاب پوشه',
+            onPressed: _openFolderManager,
+            icon: const Icon(Icons.create_new_folder_outlined, size: 28),
+            iconSize: 28,
+          ),
+        ],
       ),
     );
   }
