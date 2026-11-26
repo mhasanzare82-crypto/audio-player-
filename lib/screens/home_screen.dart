@@ -47,7 +47,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final List<Map<String, String>> _libraryFolders = [];
   Map<String, String> _lyrics = {};
   int _currentIndex = -1;
-  bool _loading = true;
   bool _shuffle = false;
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
@@ -165,7 +164,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _bookmarks
           ..clear()
           ..addAll(savedBookmarks);
-        _loading = false;
       });
       if (_tracks.isNotEmpty) {
         await _replacePlaylist(autoplay: false);
@@ -174,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         await _store.saveTracks(_tracks);
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() {});
     }
   }
 
@@ -648,39 +646,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _showMessage(
       'نشانک در ${_formatDuration(Duration(milliseconds: bookmark.positionMs))} ذخیره شد.',
     );
-  }
-
-  Future<void> _removeBookmark(String id) async {
-    setState(() => _bookmarks.removeWhere((bookmark) => bookmark.id == id));
-    await _store.saveBookmarks(_bookmarks);
-  }
-
-  Future<void> _jumpToBookmark(AudioBookmark bookmark) async {
-    final trackIndex = _tracks.indexWhere(
-      (track) => track.path == bookmark.audioPath,
-    );
-    if (trackIndex < 0) {
-      _showMessage('فایل صوتی این نشانک در کتابخانه پیدا نشد.');
-      return;
-    }
-    try {
-      await _player.pause();
-      if (_player.sequence.length != _tracks.length) {
-        await _replacePlaylist(autoplay: false);
-      }
-      await _player.seek(
-        Duration(milliseconds: bookmark.positionMs),
-        index: trackIndex,
-      );
-      if (mounted) setState(() {});
-    } catch (error) {
-      _showMessage('رفتن به نشانک ناموفق بود: $error');
-    }
-  }
-
-  String _formatDateTime(DateTime value) {
-    String two(int number) => number.toString().padLeft(2, '0');
-    return '${value.year}/${two(value.month)}/${two(value.day)}  ${two(value.hour)}:${two(value.minute)}';
   }
 
   Widget _buildBookmarksTab(ColorScheme colors) {
@@ -1330,7 +1295,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
             itemCount: itemCount,
-            separatorBuilder: (_, __) => Divider(
+            separatorBuilder: (_, _) => Divider(
               height: 1,
               color: colors.outlineVariant.withValues(alpha: 0.55),
             ),
