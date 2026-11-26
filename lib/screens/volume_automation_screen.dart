@@ -7,11 +7,13 @@ class VolumeAutomationScreen extends StatefulWidget {
   const VolumeAutomationScreen({
     super.key,
     required this.initialProfile,
+    required this.hasSavedProfile,
     required this.controller,
     required this.onSave,
   });
 
   final VolumeAutomationProfile initialProfile;
+  final bool hasSavedProfile;
   final VolumeAutomationController controller;
   final Future<void> Function(VolumeAutomationProfile profile) onSave;
 
@@ -21,6 +23,9 @@ class VolumeAutomationScreen extends StatefulWidget {
 
 class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   late VolumeAutomationProfile _profile;
+  late VolumeAutomationProfile _savedProfile;
+  late bool _hasSavedProfile;
+  bool _hasUnsavedChanges = false;
   int _selectedPoint = 0;
   final List<Offset> _drawingOffsets = <Offset>[];
   bool _isDrawing = false;
@@ -33,6 +38,8 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   void initState() {
     super.initState();
     _profile = widget.initialProfile;
+    _savedProfile = widget.initialProfile;
+    _hasSavedProfile = widget.hasSavedProfile;
     final totalSeconds = (_profile.durationMs / 1000).round();
     _hoursController = TextEditingController(text: (totalSeconds ~/ 3600).toString());
     _minutesController = TextEditingController(text: ((totalSeconds % 3600) ~/ 60).toString());
@@ -59,6 +66,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     final sorted = [...points]..sort((a, b) => a.timeMs.compareTo(b.timeMs));
     setState(() {
       _profile = _profile.copyWith(points: sorted);
+      _hasUnsavedChanges = true;
       _selectedPoint = _selectedPoint.clamp(0, sorted.length - 1).toInt();
     });
   }
@@ -206,6 +214,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
         repeat: _profile.repeat,
         points: points,
       );
+      _hasUnsavedChanges = true;
     });
   }
 
@@ -214,6 +223,11 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     try {
       await widget.onSave(_profile);
       if (!mounted) return;
+      setState(() {
+        _savedProfile = _profile;
+        _hasSavedProfile = true;
+        _hasUnsavedChanges = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الگوی تغییرات صدا ذخیره شد.')),
       );
@@ -227,13 +241,20 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     }
   }
 
-  void _togglePlayback() {
-    if (_isRunning) {
-      widget.controller.stop();
+  void _setAutomationEnabled(bool enabled) {
+    if (enabled) {
+      if (!_hasSavedProfile || _hasUnsavedChanges) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ابتدا تغییرات نمودار را ذخیره کن، سپس آن را فعال کن.'),
+          ),
+        );
+        return;
+      }
+      widget.controller.start(_savedProfile);
     } else {
-      widget.controller.start(_profile);
+      widget.controller.stop();
     }
-    setState(() {});
   }
 
   @override
@@ -363,9 +384,10 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
               value: _profile.repeat,
               onChanged: _isRunning
                   ? null
-                  : (value) => setState(
-                        () => _profile = _profile.copyWith(repeat: value),
-                      ),
+                  : (value) => setState(() {
+                        _profile = _profile.copyWith(repeat: value);
+                        _hasUnsavedChanges = true;
+                      }),
             ),
             const SizedBox(height: 8),
             Row(
@@ -396,10 +418,20 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
             const SizedBox(height: 12),
             ValueListenableBuilder<bool>(
               valueListenable: widget.controller.isRunning,
-              builder: (context, running, _) => FilledButton.tonalIcon(
-                onPressed: _togglePlayback,
-                icon: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded),
-                label: Text(running ? 'توقف اجرای نمودار' : 'شروع پیش‌نمایش و اجرا'),
+              builder: (context, running, _) => SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('اجرای نمودار ذخیره‌شده'),
+                subtitle: Text(
+                  running
+                      ? 'فعال است؛ تغییرات نمودار روی صدای پلیر اعمال می‌شود.'
+                      : (!_hasSavedProfile || _hasUnsavedChanges)
+                          ? 'برای فعال‌سازی، ابتدا نمودار را ذخیره کن.'
+                          : 'غیرفعال است؛ برای اجرای نمودار کلید را روشن کن.',
+                ),
+                value: running,
+                onChanged: (!_hasSavedProfile || _hasUnsavedChanges) && !running
+                    ? null
+                    : _setAutomationEnabled,
               ),
             ),
             ValueListenableBuilder<double>(
