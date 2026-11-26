@@ -42,8 +42,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _speed = 1;
   double _volume = 1;
   late final TabController _tabController;
-  Timer? _bookmarkHoldTimer;
-  bool _bookmarkHoldTriggered = false;
   Timer? _lyricsHoldTimer;
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
@@ -431,28 +429,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (mounted) setState(() {});
   }
 
-  void _onBookmarkPointerDown(PointerDownEvent event) {
-    _bookmarkHoldTriggered = false;
-    _bookmarkHoldTimer?.cancel();
-    _bookmarkHoldTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      _bookmarkHoldTriggered = true;
-      _tabController.animateTo(2);
-    });
-  }
-
-  void _onBookmarkPointerEnd(PointerEvent event) {
-    _bookmarkHoldTimer?.cancel();
-  }
-
-  void _handleBookmarkTap() {
-    if (_bookmarkHoldTriggered) {
-      _bookmarkHoldTriggered = false;
-      return;
-    }
-    unawaited(_addBookmark());
-  }
-
   Future<void> _addBookmark() async {
     final track = _currentTrack;
     if (track == null) return;
@@ -523,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(height: 6),
               Text(
-                'هنگام پخش فایل، نشانگر بالای نوار زمان را لمس کن.',
+                'هنگام پخش فایل، دکمه ثبت نشانک کنار عنوان فایل را لمس کن.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: colors.onSurfaceVariant),
               ),
@@ -968,7 +944,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _bookmarkHoldTimer?.cancel();
     _lyricsHoldTimer?.cancel();
     _tabController.dispose();
     _player.dispose();
@@ -984,63 +959,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             'پلیر صوتی',
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
-          actions: [
-            PopupMenuButton<String>(
-              tooltip: 'زمان‌بندی پخش',
-              icon: const Icon(Icons.schedule),
-              onSelected: (value) {
-                if (value == 'start') _scheduleStartDialog();
-                if (value == 'stop') _scheduleStopDialog();
-                if (value == 'cancel_start') _cancelScheduledStart();
-                if (value == 'cancel_stop') _cancelScheduledStop();
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'start', child: Text('تنظیم شروع خودکار')),
-                PopupMenuItem(value: 'stop', child: Text('تنظیم توقف خودکار')),
-                PopupMenuDivider(),
-                PopupMenuItem(value: 'cancel_start', child: Text('لغو شروع خودکار')),
-                PopupMenuItem(value: 'cancel_stop', child: Text('لغو توقف خودکار')),
-              ],
-            ),
-            IconButton(
-              tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
-              onPressed: widget.onToggleTheme,
-              icon: Icon(widget.isDark ? Icons.light_mode : Icons.dark_mode),
-            ),
-            const SizedBox(width: 6),
-          ],
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(kTextTabBarHeight),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TabBar(
-                    controller: _tabController,
-                    labelStyle: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    unselectedLabelStyle: const TextStyle(fontSize: 10),
-                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                    tabs: const [
-                      Tab(
-                        icon: Icon(Icons.library_music_outlined, size: 17),
-                        text: 'کتابخانه',
-                      ),
-                      Tab(icon: Icon(Icons.notes_rounded, size: 17), text: 'متن'),
-                      Tab(icon: Icon(Icons.bookmarks_outlined, size: 17), text: 'نشانک'),
-                      Tab(icon: Icon(Icons.queue_music_rounded, size: 17), text: 'پلی‌لیست'),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'اسکن پوشه‌ها',
-                  onPressed: _openFolderManager,
-                  icon: const Icon(Icons.folder_open_rounded),
-                ),
-              ],
-            ),
-          ),
         ),
         body: Column(
           children: [
@@ -1055,10 +973,79 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ],
               ),
             ),
+            _buildBottomNavigation(colors),
             _buildPlayerPanel(colors),
           ],
         ),
       );
+  }
+
+  Widget _buildBottomNavigation(ColorScheme colors) {
+    return Material(
+      color: colors.surface,
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                labelStyle: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+                unselectedLabelStyle: const TextStyle(fontSize: 9),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 9),
+                indicatorSize: TabBarIndicatorSize.label,
+                tabs: const [
+                  Tab(
+                    icon: Icon(Icons.library_music_outlined, size: 18),
+                    text: 'کتابخانه',
+                  ),
+                  Tab(icon: Icon(Icons.notes_rounded, size: 18), text: 'متن'),
+                  Tab(icon: Icon(Icons.bookmarks_outlined, size: 18), text: 'نشانک'),
+                  Tab(icon: Icon(Icons.queue_music_rounded, size: 18), text: 'پلی‌لیست'),
+                ],
+              ),
+              IconButton(
+                tooltip: 'اسکن پوشه‌های کتابخانه',
+                visualDensity: VisualDensity.compact,
+                onPressed: _openFolderManager,
+                icon: const Icon(Icons.folder_open_rounded),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'زمان‌بندی شروع و توقف',
+                icon: const Icon(Icons.schedule_rounded),
+                onSelected: (value) {
+                  if (value == 'start') _scheduleStartDialog();
+                  if (value == 'stop') _scheduleStopDialog();
+                  if (value == 'cancel_start') _cancelScheduledStart();
+                  if (value == 'cancel_stop') _cancelScheduledStop();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'start', child: Text('تنظیم شروع خودکار')),
+                  PopupMenuItem(value: 'stop', child: Text('تنظیم توقف خودکار')),
+                  PopupMenuDivider(),
+                  PopupMenuItem(value: 'cancel_start', child: Text('لغو شروع خودکار')),
+                  PopupMenuItem(value: 'cancel_stop', child: Text('لغو توقف خودکار')),
+                ],
+              ),
+              IconButton(
+                tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
+                visualDensity: VisualDensity.compact,
+                onPressed: widget.onToggleTheme,
+                icon: Icon(widget.isDark ? Icons.light_mode : Icons.dark_mode),
+              ),
+              const SizedBox(width: 4),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildLibraryTab(ColorScheme colors) {
@@ -1306,6 +1293,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
+                  ),
+                  IconButton(
+                    tooltip: 'ثبت نشانک در زمان فعلی',
+                    onPressed: track == null ? null : _addBookmark,
+                    icon: const Icon(Icons.bookmark_add_outlined),
                   ),
                   IconButton(
                     tooltip: 'تنظیم صدای پلیر',
