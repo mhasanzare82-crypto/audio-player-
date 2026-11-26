@@ -55,6 +55,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final List<AudioBookmark> _bookmarks = [];
   final List<AudioPlaylist> _playlists = [];
   String? _expandedPlaylistId;
+  static const String _favoritesPlaylistId = 'audio_player_favorites_v1';
+  static const String _favoritesPlaylistName = 'علاقه‌مندی‌ها';
 
   AudioTrack? get _currentTrack =>
       _currentIndex >= 0 && _currentIndex < _tracks.length
@@ -110,6 +112,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
       final savedPlaylists = await _store.loadPlaylists();
+      if (!savedPlaylists.any((item) => item.id == _favoritesPlaylistId)) {
+        savedPlaylists.add(const AudioPlaylist(
+          id: _favoritesPlaylistId,
+          name: _favoritesPlaylistName,
+          trackPaths: [],
+        ));
+        await _store.savePlaylists(savedPlaylists);
+      }
       final available = saved
           .where((track) => track.path.startsWith('content://') ||
               File(track.path).existsSync())
@@ -737,7 +747,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await _store.savePlaylists(_playlists);
   }
 
+  bool get _currentTrackIsFavorite {
+    final track = _currentTrack;
+    if (track == null) return false;
+    final index = _playlists.indexWhere((item) => item.id == _favoritesPlaylistId);
+    return index >= 0 && _playlists[index].trackPaths.contains(track.path);
+  }
+
+  Future<void> _toggleCurrentTrackFavorite() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را برای پخش انتخاب کن.');
+      return;
+    }
+    var index = _playlists.indexWhere((item) => item.id == _favoritesPlaylistId);
+    if (index < 0) {
+      _playlists.add(const AudioPlaylist(
+        id: _favoritesPlaylistId,
+        name: _favoritesPlaylistName,
+        trackPaths: [],
+      ));
+      index = _playlists.length - 1;
+    }
+    final favorites = _playlists[index];
+    final isFavorite = favorites.trackPaths.contains(track.path);
+    setState(() {
+      _playlists[index] = favorites.copyWith(
+        trackPaths: isFavorite
+            ? favorites.trackPaths.where((path) => path != track.path).toList()
+            : [...favorites.trackPaths, track.path],
+      );
+      _expandedPlaylistId = _favoritesPlaylistId;
+    });
+    await _store.savePlaylists(_playlists);
+    _showMessage(isFavorite
+        ? '«${track.title}» از علاقه‌مندی‌ها حذف شد.'
+        : '«${track.title}» به علاقه‌مندی‌ها اضافه شد.');
+  }
+
   Future<void> _deletePlaylist(AudioPlaylist playlist) async {
+    if (playlist.id == _favoritesPlaylistId) {
+      _showMessage('پلی‌لیست علاقه‌مندی‌ها قابل حذف نیست.');
+      return;
+    }
     setState(() => _playlists.removeWhere((item) => item.id == playlist.id));
     await _store.savePlaylists(_playlists);
   }
@@ -839,12 +891,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               onSelected: (value) {
                                 if (value == 'delete') _deletePlaylist(playlist);
                               },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('حذف پلی‌لیست'),
-                                ),
-                              ],
+                              itemBuilder: (_) => playlist.id == _favoritesPlaylistId
+                                  ? const <PopupMenuEntry<String>>[]
+                                  : const [
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Text('حذف پلی‌لیست'),
+                                      ),
+                                    ],
                             ),
                           ],
                         ),
@@ -1085,45 +1139,70 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: SafeArea(
         top: false,
         bottom: false,
-        child: TabBar(
-          controller: _tabController,
-          isScrollable: false,
-          labelStyle: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            height: 1.0,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w500,
-            height: 1.0,
-          ),
-          labelPadding: EdgeInsets.zero,
-          indicatorSize: TabBarIndicatorSize.label,
-          tabs: const [
-            Tab(
-              height: 62,
-              iconMargin: EdgeInsets.only(bottom: 3),
-              icon: Icon(Icons.notes_rounded, size: 25),
-              text: 'متن',
+        child: Row(
+          children: [
+            Expanded(
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: false,
+                labelStyle: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w500,
+                  height: 1.0,
+                ),
+                labelPadding: EdgeInsets.zero,
+                indicatorSize: TabBarIndicatorSize.label,
+                tabs: const [
+                  Tab(
+                    height: 62,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: Icon(Icons.notes_rounded, size: 25),
+                    text: 'متن',
+                  ),
+                  Tab(
+                    height: 62,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: Icon(Icons.bookmarks_outlined, size: 25),
+                    text: 'نشانک',
+                  ),
+                  Tab(
+                    height: 62,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: Icon(Icons.queue_music_rounded, size: 25),
+                    text: 'پلی‌لیست',
+                  ),
+                  Tab(
+                    height: 62,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: Icon(Icons.library_music_outlined, size: 25),
+                    text: 'کتابخانه',
+                  ),
+                ],
+              ),
             ),
-            Tab(
+            SizedBox(
+              width: 52,
               height: 62,
-              iconMargin: EdgeInsets.only(bottom: 3),
-              icon: Icon(Icons.bookmarks_outlined, size: 25),
-              text: 'نشانک',
-            ),
-            Tab(
-              height: 62,
-              iconMargin: EdgeInsets.only(bottom: 3),
-              icon: Icon(Icons.queue_music_rounded, size: 25),
-              text: 'پلی‌لیست',
-            ),
-            Tab(
-              height: 62,
-              iconMargin: EdgeInsets.only(bottom: 3),
-              icon: Icon(Icons.library_music_outlined, size: 25),
-              text: 'کتابخانه',
+              child: IconButton(
+                tooltip: _currentTrack == null
+                    ? 'علاقه‌مندی‌ها (ابتدا یک فایل پخش کن)'
+                    : _currentTrackIsFavorite
+                        ? 'حذف از علاقه‌مندی‌ها'
+                        : 'افزودن به علاقه‌مندی‌ها',
+                onPressed: _toggleCurrentTrackFavorite,
+                icon: Icon(
+                  _currentTrackIsFavorite
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  size: 25,
+                  color: _currentTrackIsFavorite ? colors.error : colors.onSurfaceVariant,
+                ),
+              ),
             ),
           ],
         ),
