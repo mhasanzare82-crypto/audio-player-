@@ -9,13 +9,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/audio_bookmark.dart';
 import '../models/audio_playlist.dart';
 import '../models/audio_track.dart';
+import '../models/volume_range.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 import '../services/scheduled_playback_service.dart';
+import 'volume_automation_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -49,6 +52,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
   double _volume = 1;
+  final Map<String, List<VolumeRange>> _volumeRangesByTrack = {};
+  double? _lastAppliedVolume;
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
   bool _lyricsEditing = false;
@@ -68,6 +73,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
     _tabController = TabController(length: 4, initialIndex: 3, vsync: this);
     _configureAudioSession();
+    _player.positionStream.listen((position) {
+      unawaited(_applyEffectiveVolume(position: position));
+    });
     ScheduledPlaybackService.setStopHandler(() async {
       await _player.stop();
       _showMessage('پخش صوت طبق زمان‌بندی متوقف شد.');
@@ -79,6 +87,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _currentIndex = index ?? -1;
         _lyricsEditing = false;
       });
+      _lastAppliedVolume = null;
+      unawaited(_applyEffectiveVolume(position: Duration.zero));
     });
     _player.shuffleModeEnabledStream.listen((value) {
       if (mounted) setState(() => _shuffle = value);
@@ -105,8 +115,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _restoreLibrary() async {
     try {
       final savedVolume = await _store.loadVolume();
-      await _player.setVolume(savedVolume);
+      final preferences = await SharedPreferences.getInstance();
+      for (final key in preferences.getKeys().where(
+        (key) => key.startsWith('volume_ranges_v1_'),
+      )) {
+        final savedRanges = preferences.getString(key);
+        if (savedRanges == null) continue;
+        try {
+          final ranges = (jsonDecode(savedRanges) as List<dynamic>)
+              .map((item) => VolumeRange.fromMap(
+                    Map<String, dynamic>.from(item as Map),
+                  ))
+              .toList()
+            ..sort((a, b) => a.startMs.compareTo(b.startMs));
+          _volumeRangesByTrack[key.substring('volume_ranges_v1_'.length)] = ranges;
+        } catch (error) {
+          debugPrint('Saved volume schedule is invalid for $key: $error');
+        }
+      }
       if (mounted) setState(() => _volume = savedVolume);
+      await _applyEffectiveVolume();
       final saved = await _store.loadTracks();
       final savedFolders = await _store.loadFolders();
       final lyrics = await _store.loadLyrics();
@@ -432,11 +460,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _applyEffectiveVolume({Duration? position}) async {
+    final positionMs = (position ?? _player.position).inMilliseconds;
+    final trackPath = _currentTrack?.path;
+    final ranges = trackPath == null
+        ? const <VolumeRange>[]
+        : (_volumeRangesByTrack[base64Url.encode(utf8.encode(trackPath))] ??
+            const <VolumeRange>[]);
+    final effective = scheduledVolumeAt(ranges, positionMs, _volume);
+    if (_lastAppliedVolume != null &&
+        (effective - _lastAppliedVolume!).abs() < 0.0001) {
+      return;
+    }
+    _lastAppliedVolume = effective;
+    await _player.setVolume(effective);
+  }
+
   Future<void> _setPlayerVolume(double value) async {
     final normalized = value.clamp(0.0, 1.0).toDouble();
     if (mounted) setState(() => _volume = normalized);
-    await _player.setVolume(normalized);
+    _lastAppliedVolume = null;
+    await _applyEffectiveVolume();
     await _store.saveVolume(normalized);
+  }
+
+  Future<void> _openVolumeAutomation() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را انتخاب کن.');
+      return;
+    }
+    final trackKey = base64Url.encode(utf8.encode(track.path));
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => VolumeAutomationScreen(
+          initialRanges: List<VolumeRange>.from(
+            _volumeRangesByTrack[trackKey] ?? const <VolumeRange>[],
+          ),
+          onSave: (ranges) async {
+            final preferences = await SharedPreferences.getInstance();
+            final key = 'volume_ranges_v1_$trackKey';
+            await preferences.setString(
+              key,
+              jsonEncode(ranges.map((range) => range.toMap()).toList()),
+            );
+            if (!mounted) return;
+            setState(() {
+              _volumeRangesByTrack[trackKey] = List<VolumeRange>.from(ranges)
+                ..sort((a, b) => a.startMs.compareTo(b.startMs));
+              _lastAppliedVolume = null;
+            });
+            await _applyEffectiveVolume();
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _showVolumeSettings() async {
@@ -1190,6 +1268,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   PopupMenuItem(value: 'cancel_start', child: Text('لغو شروع خودکار')),
                   PopupMenuItem(value: 'cancel_stop', child: Text('لغو توقف خودکار')),
                 ],
+              ),
+              IconButton(
+                tooltip: 'نقشه تغییرات صدا',
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                onPressed: _openVolumeAutomation,
+                icon: const Icon(Icons.multiline_chart_rounded, size: 19),
               ),
             ],
           ),
