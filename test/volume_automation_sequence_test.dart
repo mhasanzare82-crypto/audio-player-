@@ -27,7 +27,7 @@ void main() {
 
     tearDown(() => controller.dispose());
 
-    test('compresses all segments proportionally to fit shorter audio', () {
+    test('repeats the complete sequence at original pattern durations', () {
       final first = VolumeAutomationPattern(
         id: 'first',
         name: 'First',
@@ -45,67 +45,75 @@ void main() {
           VolumeAutomationSequenceItem(id: 'b', patternId: 'second'),
         ],
         patterns: [first, second],
-        audioDurationMs: 3500,
+        audioDurationMs: 20000,
       );
 
+      controller.updatePlaybackPosition(Duration.zero, isPlaying: true);
+      expect(controller.currentValue.value, closeTo(0.5, 0.001));
+
       controller.updatePlaybackPosition(
-        Duration.zero,
+        const Duration(milliseconds: 3999),
         isPlaying: true,
       );
       expect(controller.currentValue.value, closeTo(0.5, 0.001));
 
       controller.updatePlaybackPosition(
-        const Duration(milliseconds: 1999),
+        const Duration(milliseconds: 4000),
+        isPlaying: true,
+      );
+      expect(controller.currentValue.value, closeTo(0.2, 0.001));
+
+      controller.updatePlaybackPosition(
+        const Duration(milliseconds: 7000),
         isPlaying: true,
       );
       expect(controller.currentValue.value, closeTo(0.5, 0.001));
 
       controller.updatePlaybackPosition(
-        const Duration(milliseconds: 2000),
+        const Duration(milliseconds: 11000),
         isPlaying: true,
       );
       expect(controller.currentValue.value, closeTo(0.2, 0.001));
 
       controller.updatePlaybackPosition(
-        const Duration(milliseconds: 3499),
+        const Duration(milliseconds: 14000),
         isPlaying: true,
       );
-      expect(controller.currentValue.value, closeTo(0.2, 0.001));
-
-      controller.updatePlaybackPosition(
-        const Duration(milliseconds: 3500),
-        isPlaying: true,
-      );
-      expect(controller.isRunning.value, isFalse);
-      expect(controller.currentValue.value, closeTo(1, 0.001));
+      expect(controller.currentValue.value, closeTo(0.5, 0.001));
+      expect(controller.isRunning.value, isTrue);
     });
 
-    test('does not compress sequence when audio is long enough', () {
+    test('stops sequence at audio end even during a repeated cycle', () {
       final first = VolumeAutomationPattern(
         id: 'first',
         name: 'First',
-        profile: profile(4000, 0.4),
+        profile: profile(4000, 0.5),
       );
       final second = VolumeAutomationPattern(
         id: 'second',
         name: 'Second',
-        profile: profile(3000, 0.1),
+        profile: profile(3000, 0.2),
       );
-
       controller.startSequence(
         sequence: const [
           VolumeAutomationSequenceItem(id: 'a', patternId: 'first'),
           VolumeAutomationSequenceItem(id: 'b', patternId: 'second'),
         ],
         patterns: [first, second],
-        audioDurationMs: 12000,
+        audioDurationMs: 10000,
       );
 
       controller.updatePlaybackPosition(
-        const Duration(milliseconds: 4000),
+        const Duration(milliseconds: 9999),
         isPlaying: true,
       );
-      expect(controller.currentValue.value, closeTo(0.1, 0.001));
+      expect(controller.isRunning.value, isTrue);
+      controller.updatePlaybackPosition(
+        const Duration(milliseconds: 10000),
+        isPlaying: true,
+      );
+      expect(controller.isRunning.value, isFalse);
+      expect(controller.currentValue.value, closeTo(1, 0.001));
     });
 
     test('legacy profile values are migrated to the 0–50 percent range', () {
