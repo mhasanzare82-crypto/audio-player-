@@ -125,7 +125,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (available.length != saved.length) {
         await _store.saveTracks(_tracks);
       }
-
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -168,6 +167,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         return;
       }
       final contents = utf8.decode(bytes);
+      if (!mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -1134,18 +1134,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 itemBuilder: (_) => const [
                   PopupMenuItem(
                     value: 'backup',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.save_alt_rounded),
-                      title: Text('تهیه نسخه پشتیبان'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.save_alt_rounded),
+                        SizedBox(width: 12),
+                        Text('تهیه نسخه پشتیبان'),
+                      ],
                     ),
                   ),
                   PopupMenuItem(
                     value: 'restore',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.settings_backup_restore_rounded),
-                      title: Text('بازیابی نسخه پشتیبان'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.settings_backup_restore_rounded),
+                        SizedBox(width: 12),
+                        Text('بازیابی نسخه پشتیبان'),
+                      ],
                     ),
                   ),
                 ],
