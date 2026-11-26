@@ -1322,19 +1322,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       children: [
                         const Text(
                           'کتابخانه من',
-                          style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${_tracks.length} فایل صوتی • ${_libraryFolders.length} پوشه',
-                          style: TextStyle(color: colors.onSurfaceVariant),
+                          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
                         ),
                       ],
                     ),
                   ),
                   FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
                     onPressed: _pickAudio,
-                    icon: const Icon(Icons.audio_file_rounded),
+                    icon: const Icon(Icons.audio_file_rounded, size: 18),
                     label: const Text('افزودن فایل'),
                   ),
                 ],
@@ -1343,8 +1348,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
                   onPressed: _openFolderManager,
-                  icon: const Icon(Icons.create_new_folder_outlined),
+                  icon: const Icon(Icons.create_new_folder_outlined, size: 18),
                   label: const Text('افزودن پوشه کتابخانه'),
                 ),
               ),
@@ -1354,10 +1364,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   spacing: 6,
                   runSpacing: 4,
                   children: _libraryFolders.map((folder) => Chip(
-                    avatar: const Icon(Icons.folder_outlined, size: 17),
+                    avatar: const Icon(Icons.folder_outlined, size: 14),
                     label: Text(
                       folder['name'] ?? 'پوشه',
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11),
                     ),
                     visualDensity: VisualDensity.compact,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1390,6 +1401,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               : colors.surfaceContainerHighest,
                           child: Icon(
                             selected ? Icons.equalizer : Icons.music_note,
+                            size: 20,
                             color: selected
                                 ? colors.primary
                                 : colors.onSurfaceVariant,
@@ -1400,10 +1412,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
+                            fontSize: 14,
                             fontWeight: selected ? FontWeight.bold : FontWeight.w600,
                           ),
                         ),
-                        subtitle: Text(extension),
+                        subtitle: Text(extension, style: const TextStyle(fontSize: 11)),
                         onTap: () => _playTrack(index),
                         trailing: PopupMenuButton<String>(
                           onSelected: (value) {
@@ -1431,22 +1444,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.audio_file_outlined, size: 68, color: colors.primary),
+            Icon(Icons.audio_file_outlined, size: 44, color: colors.primary),
             const SizedBox(height: 16),
             const Text(
               'هنوز فایلی اضافه نکرده‌ای',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               'فایل‌های MP3، WAV، FLAC، AAC و M4A را از حافظه گوشی انتخاب کن.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: colors.onSurfaceVariant),
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             FilledButton.icon(
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                textStyle: const TextStyle(fontSize: 12),
+              ),
               onPressed: _pickAudio,
-              icon: const Icon(Icons.add),
+              icon: const Icon(Icons.add, size: 18),
               label: const Text('انتخاب فایل صوتی'),
             ),
           ],
@@ -1476,17 +1494,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.edit_note, size: 64, color: colors.primary),
+              Icon(Icons.edit_note, size: 44, color: colors.primary),
               const SizedBox(height: 12),
               const Text(
                 'برای نوشتن متن، ابتدا یک ویس انتخاب کن.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Text(
                 'متن هر فایل جداگانه ذخیره می‌شود.',
-                style: TextStyle(color: colors.onSurfaceVariant),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
               ),
             ],
           ),
