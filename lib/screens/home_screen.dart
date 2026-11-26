@@ -985,11 +985,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           actions: [
-            IconButton(
-              tooltip: 'به‌روزرسانی کتابخانه',
-              onPressed: _openFolderManager,
-              icon: const Icon(Icons.sync),
-            ),
             PopupMenuButton<String>(
               tooltip: 'زمان‌بندی پخش',
               icon: const Icon(Icons.schedule),
@@ -1014,20 +1009,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(width: 6),
           ],
-          bottom: TabBar(
-            controller: _tabController,
-            labelStyle: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(kTextTabBarHeight),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TabBar(
+                    controller: _tabController,
+                    labelStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    unselectedLabelStyle: const TextStyle(fontSize: 10),
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    tabs: const [
+                      Tab(
+                        icon: Icon(Icons.library_music_outlined, size: 17),
+                        text: 'کتابخانه',
+                      ),
+                      Tab(icon: Icon(Icons.notes_rounded, size: 17), text: 'متن'),
+                      Tab(icon: Icon(Icons.bookmarks_outlined, size: 17), text: 'نشانک'),
+                      Tab(icon: Icon(Icons.queue_music_rounded, size: 17), text: 'پلی‌لیست'),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'اسکن پوشه‌ها',
+                  onPressed: _openFolderManager,
+                  icon: const Icon(Icons.folder_open_rounded),
+                ),
+              ],
             ),
-            unselectedLabelStyle: const TextStyle(fontSize: 10),
-            labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-            tabs: const [
-              Tab(text: 'کتابخانه'),
-              Tab(icon: Icon(Icons.notes_rounded, size: 17), text: 'متن'),
-              Tab(icon: Icon(Icons.bookmarks_outlined, size: 17), text: 'نشانک'),
-              Tab(icon: Icon(Icons.queue_music_rounded, size: 17), text: 'پلی‌لیست'),
-            ],
           ),
         ),
         body: Column(
