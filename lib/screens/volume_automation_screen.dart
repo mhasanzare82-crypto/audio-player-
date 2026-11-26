@@ -43,13 +43,22 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   }
 
   Future<void> _editRange({VolumeRange? existing, int? index}) async {
+    // New ranges continue from the end of the latest saved range and
+    // inherit its volume. The user can still edit all three values.
+    final previousRange = _ranges.isEmpty ? null : _ranges.last;
+    final defaultStartMs = previousRange?.endMs ?? 0;
+    final defaultPercent = previousRange?.percent ?? 15;
     final startController = TextEditingController(
-      text: existing == null ? '00:00' : _formatTime(existing.startMs),
+      text: existing == null
+          ? _formatTime(defaultStartMs)
+          : _formatTime(existing.startMs),
     );
     final endController = TextEditingController(
-      text: existing == null ? '01:00' : _formatTime(existing.endMs),
+      text: existing == null
+          ? _formatTime(defaultStartMs + 60000)
+          : _formatTime(existing.endMs),
     );
-    var percent = existing?.percent ?? 15;
+    var percent = existing?.percent ?? defaultPercent;
     String? error;
 
     final result = await showDialog<VolumeRange>(
