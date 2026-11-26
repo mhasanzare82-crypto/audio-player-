@@ -9,13 +9,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/audio_bookmark.dart';
 import '../models/audio_playlist.dart';
 import '../models/audio_track.dart';
+import '../models/volume_range.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 import '../services/scheduled_playback_service.dart';
+import 'volume_automation_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -49,6 +52,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
   double _volume = 1;
+  final Map<String, List<VolumeRange>> _volumeRangesByTrack = {};
+  double? _lastAppliedVolume;
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
   bool _lyricsEditing = false;
@@ -68,6 +73,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
     _tabController = TabController(length: 4, initialIndex: 3, vsync: this);
     _configureAudioSession();
+    _player.positionStream.listen((position) {
+      unawaited(_applyEffectiveVolume(position: position));
+    });
     ScheduledPlaybackService.setStopHandler(() async {
       await _player.stop();
       _showMessage('پخش صوت طبق زمان‌بندی متوقف شد.');
@@ -79,6 +87,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _currentIndex = index ?? -1;
         _lyricsEditing = false;
       });
+      _lastAppliedVolume = null;
+      unawaited(_applyEffectiveVolume(position: Duration.zero));
     });
     _player.shuffleModeEnabledStream.listen((value) {
       if (mounted) setState(() => _shuffle = value);
@@ -105,8 +115,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _restoreLibrary() async {
     try {
       final savedVolume = await _store.loadVolume();
-      await _player.setVolume(savedVolume);
+      final preferences = await SharedPreferences.getInstance();
+      for (final key in preferences.getKeys().where(
+        (key) => key.startsWith('volume_ranges_v1_'),
+      )) {
+        final savedRanges = preferences.getString(key);
+        if (savedRanges == null) continue;
+        try {
+          final ranges = (jsonDecode(savedRanges) as List<dynamic>)
+              .map((item) => VolumeRange.fromMap(
+                    Map<String, dynamic>.from(item as Map),
+                  ))
+              .toList()
+            ..sort((a, b) => a.startMs.compareTo(b.startMs));
+          _volumeRangesByTrack[key.substring('volume_ranges_v1_'.length)] = ranges;
+        } catch (error) {
+          debugPrint('Saved volume schedule is invalid for $key: $error');
+        }
+      }
       if (mounted) setState(() => _volume = savedVolume);
+      await _applyEffectiveVolume();
       final saved = await _store.loadTracks();
       final savedFolders = await _store.loadFolders();
       final lyrics = await _store.loadLyrics();
@@ -432,11 +460,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _applyEffectiveVolume({Duration? position}) async {
+    final positionMs = (position ?? _player.position).inMilliseconds;
+    final trackPath = _currentTrack?.path;
+    final ranges = trackPath == null
+        ? const <VolumeRange>[]
+        : (_volumeRangesByTrack[base64Url.encode(utf8.encode(trackPath))] ??
+            const <VolumeRange>[]);
+    final effective = scheduledVolumeAt(ranges, positionMs, _volume);
+    if (_lastAppliedVolume != null &&
+        (effective - _lastAppliedVolume!).abs() < 0.0001) {
+      return;
+    }
+    _lastAppliedVolume = effective;
+    await _player.setVolume(effective);
+  }
+
   Future<void> _setPlayerVolume(double value) async {
     final normalized = value.clamp(0.0, 1.0).toDouble();
     if (mounted) setState(() => _volume = normalized);
-    await _player.setVolume(normalized);
+    _lastAppliedVolume = null;
+    await _applyEffectiveVolume();
     await _store.saveVolume(normalized);
+  }
+
+  Future<void> _openVolumeAutomation() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را انتخاب کن.');
+      return;
+    }
+    final trackKey = base64Url.encode(utf8.encode(track.path));
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => VolumeAutomationScreen(
+          initialRanges: List<VolumeRange>.from(
+            _volumeRangesByTrack[trackKey] ?? const <VolumeRange>[],
+          ),
+          onSave: (ranges) async {
+            final preferences = await SharedPreferences.getInstance();
+            final key = 'volume_ranges_v1_$trackKey';
+            await preferences.setString(
+              key,
+              jsonEncode(ranges.map((range) => range.toMap()).toList()),
+            );
+            if (!mounted) return;
+            setState(() {
+              _volumeRangesByTrack[trackKey] = List<VolumeRange>.from(ranges)
+                ..sort((a, b) => a.startMs.compareTo(b.startMs));
+              _lastAppliedVolume = null;
+            });
+            await _applyEffectiveVolume();
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _showVolumeSettings() async {
@@ -1191,6 +1269,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   PopupMenuItem(value: 'cancel_stop', child: Text('لغو توقف خودکار')),
                 ],
               ),
+              IconButton(
+                tooltip: 'نقشه تغییرات صدا',
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                onPressed: _openVolumeAutomation,
+                icon: const Icon(Icons.multiline_chart_rounded, size: 19),
+              ),
             ],
           ),
         ),
@@ -1198,26 +1284,117 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Future<void> _removeLibraryFolder(int index) async {
+    if (index < 0 || index >= _libraryFolders.length) return;
+    final removed = _libraryFolders[index];
+    setState(() => _libraryFolders.removeAt(index));
+    await _store.saveFolders(_libraryFolders);
+    _showMessage(
+      'پوشه «${removed['name'] ?? 'پوشه'}» از کتابخانه حذف شد؛ فایل‌های واردشده حفظ شدند.',
+    );
+  }
+
   Widget _buildLibraryTab(ColorScheme colors) {
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton.filledTonal(
-            tooltip: 'انتخاب فایل صوتی',
-            onPressed: _pickAudio,
-            icon: const Icon(Icons.audio_file_rounded, size: 28),
-            iconSize: 28,
+    final hasLibraryItems = _libraryFolders.isNotEmpty || _tracks.isNotEmpty;
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton.filledTonal(
+          tooltip: 'انتخاب فایل صوتی',
+          onPressed: _pickAudio,
+          icon: const Icon(Icons.audio_file_rounded, size: 28),
+          iconSize: 28,
+        ),
+        const SizedBox(width: 28),
+        IconButton.filledTonal(
+          tooltip: 'انتخاب پوشه',
+          onPressed: _openFolderManager,
+          icon: const Icon(Icons.create_new_folder_outlined, size: 28),
+          iconSize: 28,
+        ),
+      ],
+    );
+
+    if (!hasLibraryItems) {
+      return Center(child: actions);
+    }
+
+    final itemCount = _libraryFolders.length + _tracks.length;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: actions,
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            itemCount: itemCount,
+            separatorBuilder: (_, __) => Divider(
+              height: 1,
+              color: colors.outlineVariant.withValues(alpha: 0.55),
+            ),
+            itemBuilder: (context, index) {
+              if (index < _libraryFolders.length) {
+                final folder = _libraryFolders[index];
+                return ListTile(
+                  leading: Icon(
+                    Icons.folder_rounded,
+                    color: colors.primary,
+                  ),
+                  title: Text(
+                    folder['name'] ?? 'پوشه',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textDirection: TextDirection.rtl,
+                  ),
+                  subtitle: const Text('پوشه کتابخانه'),
+                  trailing: IconButton(
+                    tooltip: 'حذف پوشه از کتابخانه',
+                    onPressed: () => _removeLibraryFolder(index),
+                    icon: const Icon(Icons.delete_outline_rounded),
+                  ),
+                );
+              }
+
+              final trackIndex = index - _libraryFolders.length;
+              final track = _tracks[trackIndex];
+              final isCurrent = _currentIndex == trackIndex;
+              return ListTile(
+                leading: Icon(
+                  isCurrent
+                      ? Icons.graphic_eq_rounded
+                      : Icons.audio_file_rounded,
+                  color: isCurrent ? colors.primary : colors.onSurfaceVariant,
+                ),
+                title: Text(
+                  track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textDirection: TextDirection.rtl,
+                ),
+                subtitle: Text(isCurrent ? 'در حال پخش' : 'فایل صوتی'),
+                onTap: () => _playTrack(trackIndex),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'پخش فایل',
+                      onPressed: () => _playTrack(trackIndex),
+                      icon: const Icon(Icons.play_arrow_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'حذف فایل از کتابخانه',
+                      onPressed: () => _removeTrack(trackIndex),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-          const SizedBox(width: 28),
-          IconButton.filledTonal(
-            tooltip: 'انتخاب پوشه',
-            onPressed: _openFolderManager,
-            icon: const Icon(Icons.create_new_folder_outlined, size: 28),
-            iconSize: 28,
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
