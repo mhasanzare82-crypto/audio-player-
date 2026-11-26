@@ -690,7 +690,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 8),
                 child: Text(
-                  'اگر مجموع زمان الگوها از زمان ویس بیشتر باشد، زمان همه الگوها به یک نسبت فشرده می‌شود و شکل منحنی‌ها ثابت می‌ماند.',
+                  'مجموع الگوها با مدت‌زمان اصلی خود به‌ترتیب تکرار می‌شود؛ پس از آخرین الگو، چرخه از ابتدا آغاز می‌شود و تا پایان ویس ادامه دارد.',
                   textDirection: TextDirection.rtl,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
