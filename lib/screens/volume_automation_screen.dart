@@ -8,14 +8,25 @@ class VolumeAutomationScreen extends StatefulWidget {
     super.key,
     required this.initialProfile,
     required this.hasSavedProfile,
+    required this.patterns,
+    required this.sequence,
+    required this.audioDurationMs,
     required this.controller,
     required this.onSave,
+    required this.onSaveLibrary,
   });
 
   final VolumeAutomationProfile initialProfile;
   final bool hasSavedProfile;
+  final List<VolumeAutomationPattern> patterns;
+  final List<VolumeAutomationSequenceItem> sequence;
+  final int audioDurationMs;
   final VolumeAutomationController controller;
   final Future<void> Function(VolumeAutomationProfile profile) onSave;
+  final Future<void> Function(
+    List<VolumeAutomationPattern> patterns,
+    List<VolumeAutomationSequenceItem> sequence,
+  ) onSaveLibrary;
 
   @override
   State<VolumeAutomationScreen> createState() => _VolumeAutomationScreenState();
@@ -25,6 +36,10 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   late VolumeAutomationProfile _profile;
   late VolumeAutomationProfile _savedProfile;
   late bool _hasSavedProfile;
+  late List<VolumeAutomationPattern> _patterns;
+  late List<VolumeAutomationSequenceItem> _sequence;
+  String? _editingPatternId;
+  late final TextEditingController _patternNameController;
   bool _hasUnsavedChanges = false;
   int _selectedPoint = 0;
   final List<Offset> _drawingOffsets = <Offset>[];
@@ -40,6 +55,9 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     _profile = widget.initialProfile;
     _savedProfile = widget.initialProfile;
     _hasSavedProfile = widget.hasSavedProfile;
+    _patterns = List<VolumeAutomationPattern>.of(widget.patterns);
+    _sequence = List<VolumeAutomationSequenceItem>.of(widget.sequence);
+    _patternNameController = TextEditingController();
     final totalSeconds = (_profile.durationMs / 1000).round();
     _hoursController = TextEditingController(text: (totalSeconds ~/ 3600).toString());
     _minutesController = TextEditingController(text: ((totalSeconds % 3600) ~/ 60).toString());
@@ -57,6 +75,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     _hoursController.dispose();
     _minutesController.dispose();
     _secondsController.dispose();
+    _patternNameController.dispose();
     super.dispose();
   }
 
@@ -121,7 +140,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
       final normalizedX =
           ((offset.dx - plot.left) / plot.width).clamp(0.0, 1.0);
       final normalizedY =
-          (1 - (offset.dy - plot.top) / plot.height).clamp(0.0, 1.0);
+          (1 - (offset.dy - plot.top) / plot.height).clamp(0.0, 1.0) * 0.5;
       final timeMs = (normalizedX * _profile.durationMs).round();
       final sample = VolumeAutomationPoint(
         timeMs: timeMs,
@@ -162,8 +181,8 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   void _clearDrawing() {
     if (_isRunning) return;
     _setPoints([
-      const VolumeAutomationPoint(timeMs: 0, volume: 1),
-      VolumeAutomationPoint(timeMs: _profile.durationMs, volume: 1),
+      const VolumeAutomationPoint(timeMs: 0, volume: 0.5),
+      VolumeAutomationPoint(timeMs: _profile.durationMs, volume: 0.5),
     ]);
   }
 
@@ -221,15 +240,34 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   Future<void> _saveProfile() async {
     setState(() => _saving = true);
     try {
+      final name = _patternNameController.text.trim().isEmpty
+          ? 'الگو ${_patterns.length + 1}'
+          : _patternNameController.text.trim();
+      final id = _editingPatternId ??
+          DateTime.now().microsecondsSinceEpoch.toString();
+      final pattern = VolumeAutomationPattern(
+        id: id,
+        name: name,
+        profile: _profile,
+      );
+      final index = _patterns.indexWhere((item) => item.id == id);
+      if (index < 0) {
+        _patterns.add(pattern);
+      } else {
+        _patterns[index] = pattern;
+      }
       await widget.onSave(_profile);
+      await widget.onSaveLibrary(_patterns, _sequence);
       if (!mounted) return;
       setState(() {
+        _editingPatternId = id;
         _savedProfile = _profile;
+        _patternNameController.text = name;
         _hasSavedProfile = true;
         _hasUnsavedChanges = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الگوی تغییرات صدا ذخیره شد.')),
+        const SnackBar(content: Text('الگو در کتابخانه ذخیره شد.')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -239,6 +277,79 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _selectPattern(VolumeAutomationPattern pattern) {
+    if (_isRunning) return;
+    final seconds = (pattern.profile.durationMs / 1000).round();
+    setState(() {
+      _profile = pattern.profile;
+      _savedProfile = pattern.profile;
+      _editingPatternId = pattern.id;
+      _patternNameController.text = pattern.name;
+      _hoursController.text = (seconds ~/ 3600).toString();
+      _minutesController.text = ((seconds % 3600) ~/ 60).toString();
+      _secondsController.text = (seconds % 60).toString();
+      _hasUnsavedChanges = false;
+      _hasSavedProfile = true;
+    });
+  }
+
+  Future<void> _persistLibrary() async {
+    await widget.onSaveLibrary(_patterns, _sequence);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _addToSequence(VolumeAutomationPattern pattern) async {
+    if (widget.audioDurationMs <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ابتدا یک فایل صوتی را در پلیر انتخاب کن.')),
+      );
+      return;
+    }
+    setState(() {
+      _sequence.add(VolumeAutomationSequenceItem(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        patternId: pattern.id,
+      ));
+    });
+    await _persistLibrary();
+  }
+
+  Future<void> _removePattern(VolumeAutomationPattern pattern) async {
+    setState(() {
+      _patterns.removeWhere((item) => item.id == pattern.id);
+      _sequence.removeWhere((item) => item.patternId == pattern.id);
+      if (_editingPatternId == pattern.id) {
+        _editingPatternId = null;
+        _patternNameController.clear();
+        _hasUnsavedChanges = true;
+      }
+      _hasSavedProfile = _patterns.isNotEmpty;
+    });
+    await _persistLibrary();
+  }
+
+  Future<void> _removeSequenceItem(VolumeAutomationSequenceItem item) async {
+    setState(() => _sequence.removeWhere((entry) => entry.id == item.id));
+    await _persistLibrary();
+  }
+
+  Future<void> _moveSequenceItem(int index, int delta) async {
+    final target = index + delta;
+    if (target < 0 || target >= _sequence.length) return;
+    setState(() {
+      final item = _sequence.removeAt(index);
+      _sequence.insert(target, item);
+    });
+    await _persistLibrary();
+  }
+
+  String _durationLabel(int milliseconds) {
+    final totalSeconds = (milliseconds / 1000).round();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes دقیقه و $seconds ثانیه';
   }
 
   void _setAutomationEnabled(bool enabled) {
@@ -251,7 +362,15 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
         );
         return;
       }
-      widget.controller.start(_savedProfile);
+      if (_sequence.isNotEmpty) {
+        widget.controller.startSequence(
+          sequence: _sequence,
+          patterns: _patterns,
+          audioDurationMs: widget.audioDurationMs,
+        );
+      } else {
+        widget.controller.start(_savedProfile);
+      }
     } else {
       widget.controller.stop();
     }
@@ -373,6 +492,18 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                 label: const Text('اعمال مدت زمان'),
               ),
             ),
+            TextField(
+              controller: _patternNameController,
+              enabled: !_isRunning,
+              textDirection: TextDirection.rtl,
+              decoration: const InputDecoration(
+                labelText: 'نام الگو',
+                hintText: 'مثلاً شروع آرام یا افزایش تدریجی',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('تکرار نمودار از ابتدا'),
@@ -415,6 +546,128 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'الگوهای ذخیره‌شده',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+            if (_patterns.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Text('هنوز الگویی ذخیره نشده است.'),
+              )
+            else
+              ..._patterns.map((pattern) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: IconButton(
+                      tooltip: 'ویرایش الگو',
+                      onPressed: _isRunning ? null : () => _selectPattern(pattern),
+                      icon: Icon(
+                        _editingPatternId == pattern.id
+                            ? Icons.edit
+                            : Icons.show_chart,
+                      ),
+                    ),
+                    title: Text(pattern.name, textDirection: TextDirection.rtl),
+                    subtitle: Text(_durationLabel(pattern.profile.durationMs)),
+                    trailing: Wrap(
+                      spacing: 0,
+                      children: [
+                        IconButton(
+                          tooltip: 'افزودن به ترتیب پخش',
+                          onPressed: _isRunning ? null : () => _addToSequence(pattern),
+                          icon: const Icon(Icons.playlist_add),
+                        ),
+                        IconButton(
+                          tooltip: 'حذف الگو',
+                          onPressed: _isRunning ? null : () => _removePattern(pattern),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ],
+                    ),
+                  )),
+            const Divider(height: 24),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'ترتیب اجرای الگوها برای این ویس',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+            Text(
+              widget.audioDurationMs > 0
+                  ? 'مدت فایل صوتی: ${_durationLabel(widget.audioDurationMs)}'
+                  : 'برای ساخت ترتیب پخش، ابتدا یک فایل صوتی انتخاب کن.',
+              textDirection: TextDirection.rtl,
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+            if (_sequence.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Text('هنوز الگویی به ترتیب پخش این ویس اضافه نشده است.'),
+              )
+            else
+              ..._sequence.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
+                final pattern = _patterns.where((p) => p.id == item.patternId).firstOrNull;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    radius: 13,
+                    child: Text('${index + 1}'),
+                  ),
+                  title: Text(
+                    pattern?.name ?? 'الگوی حذف‌شده',
+                    textDirection: TextDirection.rtl,
+                  ),
+                  subtitle: Text(pattern == null
+                      ? 'این الگو در دسترس نیست'
+                      : _durationLabel(pattern.profile.durationMs)),
+                  trailing: Wrap(
+                    spacing: 0,
+                    children: [
+                      IconButton(
+                        tooltip: 'بالا',
+                        onPressed: _isRunning || index == 0
+                            ? null
+                            : () => _moveSequenceItem(index, -1),
+                        icon: const Icon(Icons.arrow_upward, size: 19),
+                      ),
+                      IconButton(
+                        tooltip: 'پایین',
+                        onPressed: _isRunning || index == _sequence.length - 1
+                            ? null
+                            : () => _moveSequenceItem(index, 1),
+                        icon: const Icon(Icons.arrow_downward, size: 19),
+                      ),
+                      IconButton(
+                        tooltip: 'حذف از ترتیب',
+                        onPressed: _isRunning ? null : () => _removeSequenceItem(item),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            if (_sequence.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Text(
+                  'اگر مجموع زمان الگوها از زمان ویس بیشتر باشد، زمان همه الگوها به یک نسبت فشرده می‌شود و شکل منحنی‌ها ثابت می‌ماند.',
+                  textDirection: TextDirection.rtl,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                ),
+              ),
             const SizedBox(height: 12),
             ValueListenableBuilder<bool>(
               valueListenable: widget.controller.isRunning,
@@ -452,7 +705,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
             ValueListenableBuilder<double>(
               valueListenable: widget.controller.currentValue,
               builder: (context, value, _) => Text(
-                'ضریب فعلی منحنی: ${(value * 100).round()}٪',
+                'سطح فعلی نسبت به صدای پایه: ${(value * 100).round()}٪',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: colors.onSurfaceVariant),
               ),
@@ -516,7 +769,7 @@ class _VolumeCurvePainter extends CustomPainter {
       canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), gridPaint);
       _drawLabel(
         canvas,
-        '${100 - step * 25}%',
+        '${50 - step * 12.5}%',
         Offset(0, y - 8),
         textColor,
         width: 36,
@@ -526,10 +779,13 @@ class _VolumeCurvePainter extends CustomPainter {
     for (var step = 0; step <= 4; step++) {
       final x = plot.left + plot.width * step / 4;
       canvas.drawLine(Offset(x, plot.top), Offset(x, plot.bottom), gridPaint);
-      final seconds = (profile.durationMs * step / 4 / 1000).round();
+      final minutes = (profile.durationMs * step / 4 / 60000);
+      final timeLabel = minutes == minutes.roundToDouble()
+          ? '${minutes.round()}m'
+          : '${minutes.toStringAsFixed(1)}m';
       _drawLabel(
         canvas,
-        '${seconds}s',
+        timeLabel,
         Offset(x - 18, plot.bottom + 8),
         textColor,
         width: 36,
@@ -544,7 +800,7 @@ class _VolumeCurvePainter extends CustomPainter {
       final point = profile.points[i];
       final offset = Offset(
         plot.left + plot.width * point.timeMs / profile.durationMs,
-        plot.bottom - plot.height * point.volume,
+        plot.bottom - plot.height * (point.volume / 0.5),
       );
       if (i == 0) {
         path.moveTo(offset.dx, offset.dy);
