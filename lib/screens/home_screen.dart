@@ -954,12 +954,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'پلیر صوتی',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
         body: Column(
           children: [
             Expanded(
@@ -985,6 +979,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       color: colors.surface,
       child: SafeArea(
         top: false,
+        bottom: false,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -995,31 +990,56 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 labelStyle: const TextStyle(
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: FontWeight.w600,
+                  height: 1,
                 ),
-                unselectedLabelStyle: const TextStyle(fontSize: 9),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 9),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 8,
+                  height: 1,
+                ),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 6),
                 indicatorSize: TabBarIndicatorSize.label,
                 tabs: const [
                   Tab(
-                    icon: Icon(Icons.library_music_outlined, size: 18),
+                    height: 46,
+                    iconMargin: EdgeInsets.only(bottom: 1),
+                    icon: Icon(Icons.library_music_outlined, size: 16),
                     text: 'کتابخانه',
                   ),
-                  Tab(icon: Icon(Icons.notes_rounded, size: 18), text: 'متن'),
-                  Tab(icon: Icon(Icons.bookmarks_outlined, size: 18), text: 'نشانک'),
-                  Tab(icon: Icon(Icons.queue_music_rounded, size: 18), text: 'پلی‌لیست'),
+                  Tab(
+                    height: 46,
+                    iconMargin: EdgeInsets.only(bottom: 1),
+                    icon: Icon(Icons.notes_rounded, size: 16),
+                    text: 'متن',
+                  ),
+                  Tab(
+                    height: 46,
+                    iconMargin: EdgeInsets.only(bottom: 1),
+                    icon: Icon(Icons.bookmarks_outlined, size: 16),
+                    text: 'نشانک',
+                  ),
+                  Tab(
+                    height: 46,
+                    iconMargin: EdgeInsets.only(bottom: 1),
+                    icon: Icon(Icons.queue_music_rounded, size: 16),
+                    text: 'پلی‌لیست',
+                  ),
                 ],
               ),
               IconButton(
                 tooltip: 'اسکن پوشه‌های کتابخانه',
                 visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
                 onPressed: _openFolderManager,
-                icon: const Icon(Icons.folder_open_rounded),
+                icon: const Icon(Icons.folder_open_rounded, size: 19),
               ),
               PopupMenuButton<String>(
                 tooltip: 'زمان‌بندی شروع و توقف',
-                icon: const Icon(Icons.schedule_rounded),
+                iconSize: 19,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
                 onSelected: (value) {
                   if (value == 'start') _scheduleStartDialog();
                   if (value == 'stop') _scheduleStopDialog();
@@ -1037,10 +1057,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               IconButton(
                 tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
                 visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
                 onPressed: widget.onToggleTheme,
-                icon: Icon(widget.isDark ? Icons.light_mode : Icons.dark_mode),
+                icon: Icon(
+                  widget.isDark ? Icons.light_mode : Icons.dark_mode,
+                  size: 19,
+                ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 2),
             ],
           ),
         ),
