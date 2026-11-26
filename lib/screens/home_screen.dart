@@ -738,67 +738,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final current = _currentTrack;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('پلی‌لیست‌های من',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            )),
-                    const SizedBox(height: 3),
-                    Text(
-                      current == null
-                          ? 'برای افزودن فایل، ابتدا یک صوت پخش کن.'
-                          : 'فایل فعلی: ${current.title}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  textStyle: const TextStyle(fontSize: 12),
-                ),
-                onPressed: _createPlaylist,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('پلی‌لیست جدید'),
-              ),
-            ],
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: IconButton.filled(
+              tooltip: 'پلی‌لیست جدید',
+              onPressed: _createPlaylist,
+              icon: const Icon(Icons.add_rounded),
+            ),
           ),
         ),
         Expanded(
           child: _playlists.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.queue_music_rounded,
-                            size: 42, color: colors.primary),
-                        const SizedBox(height: 12),
-                        const Text('هنوز پلی‌لیستی نساخته‌ای.',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 6),
-                        Text(
-                          'ابتدا پلی‌لیست بساز، سپس فایل در حال پخش را به آن اضافه کن.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
+              ? const SizedBox.shrink()
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                   itemCount: _playlists.length,
@@ -819,35 +772,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onExpansionChanged: (value) => setState(() {
                           _expandedPlaylistId = value ? playlist.id : null;
                         }),
-                        leading: Icon(Icons.queue_music_rounded,
-                            size: 20, color: colors.primary),
-                        title: Text(playlist.name,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                        subtitle: Text('${tracks.length} فایل صوتی',
-                            style: const TextStyle(fontSize: 11)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: 'افزودن فایل فعلی به این پلی‌لیست',
-                              onPressed: current == null
-                                  ? null
-                                  : () => _addCurrentTrackToPlaylist(playlist),
-                              icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                            ),
-                            if (playlist.id != _favoritesPlaylistId)
-                              PopupMenuButton<String>(
-                                onSelected: (value) {
-                                  if (value == 'delete') _deletePlaylist(playlist);
-                                },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: Text('حذف پلی‌لیست'),
-                                  ),
-                                ],
-                              ),
-                          ],
+                        title: Text(
+                          playlist.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
                         children: [
                           if (current != null)
@@ -855,14 +785,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               alignment: Alignment.centerRight,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: TextButton.icon(
-                                  style: TextButton.styleFrom(
-                                    visualDensity: VisualDensity.compact,
-                                    textStyle: const TextStyle(fontSize: 11),
-                                  ),
+                                child: TextButton(
                                   onPressed: () => _addCurrentTrackToPlaylist(playlist),
-                                  icon: const Icon(Icons.playlist_add, size: 17),
-                                  label: const Text('افزودن فایل فعلی به این پلی‌لیست'),
+                                  child: const Text('افزودن آهنگ در حال پخش'),
+                                ),
+                              ),
+                            ),
+                          if (playlist.id != _favoritesPlaylistId)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: TextButton(
+                                  onPressed: () => _deletePlaylist(playlist),
+                                  child: const Text('حذف پلی‌لیست'),
                                 ),
                               ),
                             ),
@@ -874,19 +810,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           else
                             ...tracks.map((track) => ListTile(
                                   dense: true,
-                                  leading: const Icon(Icons.music_note_outlined),
-                                  title: Text(track.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis),
+                                  title: Text(
+                                    track.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                   onTap: () {
                                     final trackIndex = _tracks.indexOf(track);
                                     if (trackIndex >= 0) _playTrack(trackIndex);
                                   },
-                                  trailing: IconButton(
-                                    tooltip: 'حذف از پلی‌لیست',
+                                  trailing: TextButton(
                                     onPressed: () => _removeFromPlaylist(
-                                        playlist, track.path),
-                                    icon: const Icon(Icons.remove_circle_outline),
+                                      playlist,
+                                      track.path,
+                                    ),
+                                    child: const Text('حذف'),
                                   ),
                                 )),
                         ],
