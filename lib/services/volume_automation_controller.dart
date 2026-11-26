@@ -50,9 +50,7 @@ class VolumeAutomationController {
     _lastPositionMs = null;
     _wasPlaying = false;
     isRunning.value = true;
-    _emit(_sequence.firstOrNull == null
-        ? 0.5
-        : _patterns[_sequence.first.patternId]!.profile.valueAt(0));
+    _emit(_patterns[_sequence.first.patternId]!.profile.valueAt(0));
   }
 
   void updatePlaybackPosition(Duration position, {required bool isPlaying}) {
@@ -121,7 +119,7 @@ class VolumeAutomationController {
             : (localMs / segmentDuration * pattern.profile.durationMs).round();
         final sampledPosition = pattern.profile.repeat
             ? patternPosition % pattern.profile.durationMs
-            : patternPosition.clamp(0, pattern.profile.durationMs);
+            : patternPosition.clamp(0, pattern.profile.durationMs).toInt();
         _emit(pattern.profile.valueAt(sampledPosition));
         return;
       }
@@ -152,7 +150,7 @@ class VolumeAutomationController {
   }
 
   void _emit(double value) {
-    final normalized = value.clamp(0.0, 0.5).toDouble();
+    final normalized = value.clamp(0.0, 1.0).toDouble();
     currentValue.value = normalized;
     onVolumeChanged(normalized);
   }
