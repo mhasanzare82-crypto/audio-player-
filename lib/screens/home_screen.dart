@@ -1016,11 +1016,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ],
           bottom: TabBar(
             controller: _tabController,
+            labelStyle: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+            unselectedLabelStyle: const TextStyle(fontSize: 10),
+            labelPadding: const EdgeInsets.symmetric(horizontal: 4),
             tabs: const [
-              Tab(text: 'کتابخانه صوتی'),
-              Tab(icon: Icon(Icons.notes_rounded), text: 'متن ویس'),
-              Tab(icon: Icon(Icons.bookmarks_outlined), text: 'نشانک‌ها'),
-              Tab(icon: Icon(Icons.queue_music_rounded), text: 'پلی‌لیست‌ها'),
+              Tab(text: 'کتابخانه'),
+              Tab(icon: Icon(Icons.notes_rounded, size: 17), text: 'متن'),
+              Tab(icon: Icon(Icons.bookmarks_outlined, size: 17), text: 'نشانک'),
+              Tab(icon: Icon(Icons.queue_music_rounded, size: 17), text: 'پلی‌لیست'),
             ],
           ),
         ),
