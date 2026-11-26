@@ -279,6 +279,20 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     }
   }
 
+  void _createNewPattern() {
+    if (_isRunning) return;
+    final fresh = VolumeAutomationProfile.defaultProfile;
+    setState(() {
+      _profile = fresh;
+      _editingPatternId = null;
+      _patternNameController.clear();
+      _hoursController.text = '0';
+      _minutesController.text = '0';
+      _secondsController.text = '30';
+      _hasUnsavedChanges = true;
+    });
+  }
+
   void _selectPattern(VolumeAutomationPattern pattern) {
     if (_isRunning) return;
     final seconds = (pattern.profile.durationMs / 1000).round();
@@ -510,7 +524,15 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                 isDense: true,
               ),
             ),
-            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _isRunning ? null : _createNewPattern,
+                icon: const Icon(Icons.add),
+                label: const Text('ساخت الگوی تازه'),
+              ),
+            ),
+            const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('تکرار نمودار از ابتدا'),
