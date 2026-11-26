@@ -10,13 +10,17 @@ class VolumeAutomationController {
   final ValueNotifier<double> currentValue = ValueNotifier<double>(1);
 
   VolumeAutomationProfile? _profile;
+  List<VolumeAutomationSequenceItem> _sequence = const [];
+  Map<String, VolumeAutomationPattern> _patterns = const {};
+  int? _audioDurationMs;
   int _elapsedMs = 0;
   int? _lastPositionMs;
   bool _wasPlaying = false;
 
-  /// Arms a curve. Its clock advances only when the audio player's position
-  /// advances, so pausing or buffering the player pauses the automation too.
   void start(VolumeAutomationProfile profile) {
+    _sequence = const [];
+    _patterns = const {};
+    _audioDurationMs = null;
     _profile = profile;
     _elapsedMs = 0;
     _lastPositionMs = null;
@@ -25,39 +29,57 @@ class VolumeAutomationController {
     _emit(profile.valueAt(0));
   }
 
-  /// Feed this from the audio player's position stream.
-  ///
-  /// Large jumps are treated as seeks rather than playback time. This keeps
-  /// scrubbing forward/backward from unexpectedly consuming the curve.
-  void updatePlaybackPosition(
-    Duration position, {
-    required bool isPlaying,
+  void startSequence({
+    required List<VolumeAutomationSequenceItem> sequence,
+    required List<VolumeAutomationPattern> patterns,
+    required int audioDurationMs,
   }) {
-    if (!isRunning.value) return;
-    final activeProfile = _profile;
-    if (activeProfile == null) return;
+    final available = {for (final pattern in patterns) pattern.id: pattern};
+    final validSequence = sequence
+        .where((item) => available.containsKey(item.patternId))
+        .toList(growable: false);
+    if (validSequence.isEmpty) {
+      stop();
+      return;
+    }
+    _profile = null;
+    _sequence = validSequence;
+    _patterns = available;
+    _audioDurationMs = audioDurationMs > 0 ? audioDurationMs : null;
+    _elapsedMs = 0;
+    _lastPositionMs = null;
+    _wasPlaying = false;
+    isRunning.value = true;
+    _emit(_sequence.firstOrNull == null
+        ? 0.5
+        : _patterns[_sequence.first.patternId]!.profile.valueAt(0));
+  }
 
-    final positionMs = position.inMilliseconds;
+  void updatePlaybackPosition(Duration position, {required bool isPlaying}) {
+    if (!isRunning.value) return;
     if (!isPlaying) {
-      _lastPositionMs = positionMs;
+      _lastPositionMs = position.inMilliseconds;
       _wasPlaying = false;
       return;
     }
 
+    if (_sequence.isNotEmpty) {
+      _updateSequence(position.inMilliseconds);
+      return;
+    }
+
+    final activeProfile = _profile;
+    if (activeProfile == null) return;
+    final positionMs = position.inMilliseconds;
     if (!_wasPlaying || _lastPositionMs == null) {
       _lastPositionMs = positionMs;
       _wasPlaying = true;
       return;
     }
-
     final delta = positionMs - _lastPositionMs!;
     _lastPositionMs = positionMs;
     _wasPlaying = true;
-
-    // Position stream normally emits several times per second. Ignore large
-    // discontinuities (manual seeks / track jumps) instead of counting them.
     if (delta <= 0 || delta > 2000) return;
-
     _elapsedMs += delta;
     if (!activeProfile.repeat && _elapsedMs >= activeProfile.durationMs) {
       _elapsedMs = activeProfile.durationMs;
@@ -68,15 +90,60 @@ class VolumeAutomationController {
       _lastPositionMs = null;
       return;
     }
-
     final curvePosition = activeProfile.repeat
         ? _elapsedMs % activeProfile.durationMs
         : _elapsedMs;
     _emit(activeProfile.valueAt(curvePosition));
   }
 
+  void _updateSequence(int audioPositionMs) {
+    var totalDuration = 0;
+    for (final item in _sequence) {
+      totalDuration += _patterns[item.patternId]!.profile.durationMs;
+    }
+    if (totalDuration <= 0) {
+      stop();
+      return;
+    }
+
+    final scale = (_audioDurationMs != null && totalDuration > _audioDurationMs!)
+        ? _audioDurationMs! / totalDuration
+        : 1.0;
+    var cursor = 0.0;
+    for (final item in _sequence) {
+      final pattern = _patterns[item.patternId]!;
+      final segmentDuration = pattern.profile.durationMs * scale;
+      final segmentEnd = cursor + segmentDuration;
+      if (audioPositionMs < segmentEnd) {
+        final localMs = (audioPositionMs - cursor).clamp(0.0, segmentDuration);
+        final patternPosition = segmentDuration <= 0
+            ? 0
+            : (localMs / segmentDuration * pattern.profile.durationMs).round();
+        final sampledPosition = pattern.profile.repeat
+            ? patternPosition % pattern.profile.durationMs
+            : patternPosition.clamp(0, pattern.profile.durationMs);
+        _emit(pattern.profile.valueAt(sampledPosition));
+        return;
+      }
+      cursor = segmentEnd;
+    }
+
+    _emit(_patterns[_sequence.last.patternId]!.profile.valueAt(
+      _patterns[_sequence.last.patternId]!.profile.durationMs,
+    ));
+    isRunning.value = false;
+    _sequence = const [];
+    _patterns = const {};
+    _audioDurationMs = null;
+    _wasPlaying = false;
+    _lastPositionMs = null;
+  }
+
   void stop({bool restoreBaseVolume = true}) {
     _profile = null;
+    _sequence = const [];
+    _patterns = const {};
+    _audioDurationMs = null;
     _elapsedMs = 0;
     _lastPositionMs = null;
     _wasPlaying = false;
@@ -85,7 +152,7 @@ class VolumeAutomationController {
   }
 
   void _emit(double value) {
-    final normalized = value.clamp(0.0, 1.0).toDouble();
+    final normalized = value.clamp(0.0, 0.5).toDouble();
     currentValue.value = normalized;
     onVolumeChanged(normalized);
   }
