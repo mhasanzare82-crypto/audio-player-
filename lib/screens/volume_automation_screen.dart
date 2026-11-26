@@ -29,6 +29,17 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   void initState() {
     super.initState();
     _profile = widget.initialProfile;
+    widget.controller.isRunning.addListener(_handleRunningChanged);
+  }
+
+  void _handleRunningChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller.isRunning.removeListener(_handleRunningChanged);
+    super.dispose();
   }
 
   bool get _isRunning => widget.controller.isRunning.value;
@@ -78,7 +89,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
 
     final points = [..._profile.points, VolumeAutomationPoint(
       timeMs: time,
-      volume: y,
+      volume: y.toDouble(),
     )]..sort((a, b) => a.timeMs.compareTo(b.timeMs));
     _selectedPoint = points.indexWhere((point) => point.timeMs == time);
     _setPoints(points);
@@ -97,7 +108,8 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
       time = (x * _profile.durationMs).round().clamp(minimum, maximum).toInt();
     }
     final volume = (1 - (position.dy - plot.top) / plot.height)
-        .clamp(0.0, 1.0);
+        .clamp(0.0, 1.0)
+        .toDouble();
     final points = [..._profile.points];
     points[index] = VolumeAutomationPoint(timeMs: time, volume: volume);
     _setPoints(points);
@@ -276,7 +288,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
               ],
             ),
             Slider(
-              value: durationSeconds.clamp(5, 300),
+              value: durationSeconds.clamp(5, 300).toDouble(),
               min: 5,
               max: 300,
               divisions: 59,
