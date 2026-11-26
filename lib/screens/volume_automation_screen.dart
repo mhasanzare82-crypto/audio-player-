@@ -115,11 +115,18 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
       final normalizedY =
           (1 - (offset.dy - plot.top) / plot.height).clamp(0.0, 1.0);
       final timeMs = (normalizedX * _profile.durationMs).round();
-      if (raw.isNotEmpty && timeMs <= raw.last.timeMs) continue;
-      raw.add(VolumeAutomationPoint(
+      final sample = VolumeAutomationPoint(
         timeMs: timeMs,
         volume: normalizedY.toDouble(),
-      ));
+      );
+      if (raw.isNotEmpty && timeMs < raw.last.timeMs) continue;
+      if (raw.isNotEmpty && timeMs == raw.last.timeMs) {
+        // Preserve the final vertical position when the finger moves without
+        // advancing along the time axis.
+        raw[raw.length - 1] = sample;
+      } else {
+        raw.add(sample);
+      }
     }
     if (raw.length < 2) return;
 
