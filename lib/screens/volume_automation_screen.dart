@@ -24,11 +24,18 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   int _selectedPoint = 0;
   int? _draggingPoint;
   bool _saving = false;
+  late final TextEditingController _hoursController;
+  late final TextEditingController _minutesController;
+  late final TextEditingController _secondsController;
 
   @override
   void initState() {
     super.initState();
     _profile = widget.initialProfile;
+    final totalSeconds = (_profile.durationMs / 1000).round();
+    _hoursController = TextEditingController(text: (totalSeconds ~/ 3600).toString());
+    _minutesController = TextEditingController(text: ((totalSeconds % 3600) ~/ 60).toString());
+    _secondsController = TextEditingController(text: (totalSeconds % 60).toString());
     widget.controller.isRunning.addListener(_handleRunningChanged);
   }
 
@@ -39,6 +46,9 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   @override
   void dispose() {
     widget.controller.isRunning.removeListener(_handleRunningChanged);
+    _hoursController.dispose();
+    _minutesController.dispose();
+    _secondsController.dispose();
     super.dispose();
   }
 
@@ -126,19 +136,33 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     _setPoints(points);
   }
 
-  void _changeDuration(double seconds) {
+  void _changeDuration() {
     if (_isRunning) return;
-    final nextDuration = seconds.round() * 1000;
+    final hours = int.tryParse(_hoursController.text) ?? 0;
+    final minutes = int.tryParse(_minutesController.text) ?? 0;
+    final seconds = int.tryParse(_secondsController.text) ?? 0;
+    if (hours < 0 || hours > 99 ||
+        minutes < 0 || minutes > 59 ||
+        seconds < 0 || seconds > 59) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('زمان را درست وارد کن؛ دقیقه و ثانیه باید بین ۰ تا ۵۹ باشند.')),
+      );
+      return;
+    }
+    final nextDuration = ((hours * 3600) + (minutes * 60) + seconds) * 1000;
+    if (nextDuration < 1000) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('مدت نمودار باید حداقل یک ثانیه باشد.')),
+      );
+      return;
+    }
     final oldDuration = _profile.durationMs;
     final scaled = _profile.points.map((point) {
       if (point.timeMs == 0) {
         return VolumeAutomationPoint(timeMs: 0, volume: point.volume);
       }
       if (point.timeMs == oldDuration) {
-        return VolumeAutomationPoint(
-          timeMs: nextDuration,
-          volume: point.volume,
-        );
+        return VolumeAutomationPoint(timeMs: nextDuration, volume: point.volume);
       }
       return VolumeAutomationPoint(
         timeMs: (point.timeMs / oldDuration * nextDuration).round(),
@@ -150,10 +174,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
       final minimum = points.last.timeMs + 100;
       final maximum = nextDuration - (scaled.length - 1 - i) * 100;
       final time = scaled[i].timeMs.clamp(minimum, maximum).toInt();
-      points.add(VolumeAutomationPoint(
-        timeMs: time,
-        volume: scaled[i].volume,
-      ));
+      points.add(VolumeAutomationPoint(timeMs: time, volume: scaled[i].volume));
     }
     points.add(scaled.last);
     setState(() {
@@ -195,7 +216,6 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final durationSeconds = _profile.durationMs / 1000;
     return Scaffold(
       appBar: AppBar(
         title: const Text('نقشه تغییرات صدا'),
@@ -292,19 +312,52 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                   ),
             ),
             const SizedBox(height: 18),
+            const Align(
+              alignment: Alignment.centerRight,
+              child: Text('مدت کل نمودار (حداکثر ۹۹ ساعت و ۵۹ دقیقه و ۵۹ ثانیه)'),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
-                const Expanded(child: Text('مدت کل نمودار')),
-                Text('${durationSeconds.round()} ثانیه'),
+                Expanded(
+                  child: TextField(
+                    controller: _hoursController,
+                    enabled: !_isRunning,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(labelText: 'ساعت', border: OutlineInputBorder(), isDense: true),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _minutesController,
+                    enabled: !_isRunning,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(labelText: 'دقیقه', border: OutlineInputBorder(), isDense: true),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _secondsController,
+                    enabled: !_isRunning,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(labelText: 'ثانیه', border: OutlineInputBorder(), isDense: true),
+                  ),
+                ),
               ],
             ),
-            Slider(
-              value: durationSeconds.clamp(1, 600).toDouble(),
-              min: 1,
-              max: 600,
-              divisions: 599,
-              label: '${durationSeconds.round()} ثانیه',
-              onChanged: _isRunning ? null : _changeDuration,
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _isRunning ? null : _changeDuration,
+                icon: const Icon(Icons.schedule),
+                label: const Text('اعمال مدت زمان'),
+              ),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,

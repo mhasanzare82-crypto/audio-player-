@@ -78,15 +78,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _configureAudioSession();
     ScheduledPlaybackService.setStopHandler(() async {
       await _player.stop();
+      _volumeAutomation.stop();
       _showMessage('پخش صوت طبق زمان‌بندی متوقف شد.');
     });
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
+      _volumeAutomation.stop();
       setState(() {
         _currentIndex = index ?? -1;
         _lyricsEditing = false;
       });
+    });
+    _player.positionStream.listen((position) {
+      _volumeAutomation.updatePlaybackPosition(
+        position,
+        isPlaying: _player.playing,
+      );
+    });
+    _player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed ||
+          state.processingState == ProcessingState.idle) {
+        _volumeAutomation.stop();
+      }
     });
     _player.shuffleModeEnabledStream.listen((value) {
       if (mounted) setState(() => _shuffle = value);
