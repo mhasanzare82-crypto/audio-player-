@@ -218,6 +218,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final restoredLyrics = await _store.loadLyrics();
       final restoredBookmarks = await _store.loadBookmarks();
       final restoredPlaylists = await _store.loadPlaylists();
+      if (!restoredPlaylists.any((item) => item.id == _favoritesPlaylistId)) {
+        restoredPlaylists.add(const AudioPlaylist(
+          id: _favoritesPlaylistId,
+          name: _favoritesPlaylistName,
+          trackPaths: [],
+        ));
+        await _store.savePlaylists(restoredPlaylists);
+      }
 
       if (!mounted) return;
       setState(() {
