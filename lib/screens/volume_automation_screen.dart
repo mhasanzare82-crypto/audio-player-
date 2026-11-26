@@ -79,7 +79,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   }
 
   void _addPoint(Offset position, Size size) {
-    if (_isRunning || _profile.points.length >= 12) return;
+    if (_isRunning || _profile.points.length >= 10) return;
     final plot = _plotRect(size);
     final x = ((position.dx - plot.left) / plot.width).clamp(0.0, 1.0);
     final y = (1 - (position.dy - plot.top) / plot.height).clamp(0.0, 1.0);
