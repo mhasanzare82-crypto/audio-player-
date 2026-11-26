@@ -9,16 +9,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/audio_bookmark.dart';
 import '../models/audio_playlist.dart';
 import '../models/audio_track.dart';
-import '../models/volume_automation_profile.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 import '../services/scheduled_playback_service.dart';
-import '../services/volume_automation_controller.dart';
 import 'volume_automation_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -52,13 +49,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
   double _volume = 1;
-  late final VolumeAutomationController _volumeAutomation =
-      VolumeAutomationController(
-    onVolumeChanged: (factor) {
-      final effective = (_volume * factor).clamp(0.0, 1.0).toDouble();
-      unawaited(_player.setVolume(effective));
-    },
-  );
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
   bool _lyricsEditing = false;
@@ -78,7 +68,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _configureAudioSession();
     ScheduledPlaybackService.setStopHandler(() async {
       await _player.stop();
-      _volumeAutomation.stop();
       _showMessage('پخش صوت طبق زمان‌بندی متوقف شد.');
     });
     _restoreLibrary();
@@ -89,18 +78,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _currentIndex = index ?? -1;
         _lyricsEditing = false;
       });
-    });
-    _player.positionStream.listen((position) {
-      _volumeAutomation.updatePlaybackPosition(
-        position,
-        isPlaying: _player.playing,
-      );
-    });
-    _player.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed ||
-          state.processingState == ProcessingState.idle) {
-        _volumeAutomation.stop();
-      }
     });
     _player.shuffleModeEnabledStream.listen((value) {
       if (mounted) setState(() => _shuffle = value);
@@ -428,10 +405,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _applyEffectiveVolume() async {
-    final effective = (_volume * _volumeAutomation.currentValue.value)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    await _player.setVolume(effective);
+    await _player.setVolume(_volume);
   }
 
   Future<void> _setPlayerVolume(double value) async {
@@ -442,75 +416,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _openVolumeAutomation() async {
-    final preferences = await SharedPreferences.getInstance();
-    final stored = preferences.getString('volume_automation_profile');
-    final storedPatterns = preferences.getString('volume_automation_patterns_v1');
-    final trackPath = _currentTrack?.path ?? 'no-current-track';
-    final sequenceKey =
-        'volume_automation_sequence_${base64Url.encode(utf8.encode(trackPath))}';
-    final storedSequence = preferences.getString(sequenceKey);
-
-    var profile = VolumeAutomationProfile.defaultProfile;
-    if (stored != null) {
-      try {
-        profile = VolumeAutomationProfile.fromJson(stored);
-      } catch (error) {
-        debugPrint('Saved volume automation profile is invalid: $error');
-      }
-    }
-
-    var patterns = <VolumeAutomationPattern>[];
-    if (storedPatterns != null) {
-      try {
-        patterns = (jsonDecode(storedPatterns) as List<dynamic>)
-            .map((item) => VolumeAutomationPattern.fromMap(
-                  Map<String, dynamic>.from(item as Map),
-                ))
-            .toList();
-      } catch (error) {
-        debugPrint('Saved volume automation patterns are invalid: $error');
-      }
-    }
-    var sequence = <VolumeAutomationSequenceItem>[];
-    if (storedSequence != null) {
-      try {
-        sequence = (jsonDecode(storedSequence) as List<dynamic>)
-            .map((item) => VolumeAutomationSequenceItem.fromMap(
-                  Map<String, dynamic>.from(item as Map),
-                ))
-            .toList();
-      } catch (error) {
-        debugPrint('Saved volume automation sequence is invalid: $error');
-      }
-    }
-    if (patterns.isNotEmpty) profile = patterns.first.profile;
-    if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => VolumeAutomationScreen(
-          initialProfile: profile,
-          hasSavedProfile: patterns.isNotEmpty || stored != null,
-          patterns: patterns,
-          sequence: sequence,
-          audioDurationMs: _player.duration?.inMilliseconds ?? 0,
-          controller: _volumeAutomation,
-          onSave: (nextProfile) async {
-            await preferences.setString(
-              'volume_automation_profile',
-              nextProfile.toJson(),
-            );
-          },
-          onSaveLibrary: (nextPatterns, nextSequence) async {
-            await preferences.setString(
-              'volume_automation_patterns_v1',
-              jsonEncode(nextPatterns.map((item) => item.toMap()).toList()),
-            );
-            await preferences.setString(
-              sequenceKey,
-              jsonEncode(nextSequence.map((item) => item.toMap()).toList()),
-            );
-          },
-        ),
+        builder: (_) => const VolumeAutomationScreen(),
       ),
     );
   }
@@ -1144,7 +1052,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _lyricsHoldTimer?.cancel();
     _tabController.dispose();
-    _volumeAutomation.dispose();
     _player.dispose();
     super.dispose();
   }
