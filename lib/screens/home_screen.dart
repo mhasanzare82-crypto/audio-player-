@@ -1522,14 +1522,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Icon(Icons.edit_note, size: 44, color: colors.primary),
               const SizedBox(height: 12),
               const Text(
-                'برای نوشتن متن، ابتدا یک ویس انتخاب کن.',
+                'متن صدا ...',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'متن هر فایل جداگانه ذخیره می‌شود.',
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
               ),
             ],
           ),
@@ -1568,7 +1563,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: SingleChildScrollView(
                   child: Text(
                     (_lyrics[track.path] ?? '').trim().isEmpty
-                        ? 'هنوز متنی برای این فایل ثبت نشده است. برای نوشتن متن، سه ثانیه روی این قسمت نگه دار.'
+                        ? 'متن صدا ...'
                         : _lyrics[track.path]!,
                     textDirection: TextDirection.rtl,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.8),
@@ -1580,12 +1575,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  'برای ویرایش، سه ثانیه روی متن نگه دار.',
-                  style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-                ),
-              ),
+              const Spacer(),
               TextButton.icon(
                 onPressed: () async {
                   await _store.saveLyrics(_lyrics);
