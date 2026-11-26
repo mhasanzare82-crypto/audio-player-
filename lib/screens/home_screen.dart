@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
   double _volume = 1;
-  List<VolumeRange> _volumeRanges = [];
+  final Map<String, List<VolumeRange>> _volumeRangesByTrack = {};
   double? _lastAppliedVolume;
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
@@ -111,18 +111,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       final savedVolume = await _store.loadVolume();
       final preferences = await SharedPreferences.getInstance();
-      final savedRanges = preferences.getString('volume_ranges_v1');
-      if (savedRanges != null) {
+      for (final key in preferences.getKeys().where(
+        (key) => key.startsWith('volume_ranges_v1_'),
+      )) {
+        final savedRanges = preferences.getString(key);
+        if (savedRanges == null) continue;
         try {
-          _volumeRanges = (jsonDecode(savedRanges) as List<dynamic>)
+          final ranges = (jsonDecode(savedRanges) as List<dynamic>)
               .map((item) => VolumeRange.fromMap(
                     Map<String, dynamic>.from(item as Map),
                   ))
               .toList()
             ..sort((a, b) => a.startMs.compareTo(b.startMs));
+          _volumeRangesByTrack[key.substring('volume_ranges_v1_'.length)] = ranges;
         } catch (error) {
-          debugPrint('Saved volume schedule is invalid: $error');
-          _volumeRanges = [];
+          debugPrint('Saved volume schedule is invalid for $key: $error');
         }
       }
       if (mounted) setState(() => _volume = savedVolume);
@@ -427,7 +430,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _applyEffectiveVolume({Duration? position}) async {
     final positionMs = (position ?? _player.position).inMilliseconds;
-    final effective = scheduledVolumeAt(_volumeRanges, positionMs, _volume);
+    final trackPath = _currentTrack?.path;
+    final ranges = trackPath == null
+        ? const <VolumeRange>[]
+        : (_volumeRangesByTrack[base64Url.encode(utf8.encode(trackPath))] ??
+            const <VolumeRange>[]);
+    final effective = scheduledVolumeAt(ranges, positionMs, _volume);
     if (_lastAppliedVolume != null &&
         (effective - _lastAppliedVolume!).abs() < 0.0001) {
       return;
@@ -444,19 +452,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _openVolumeAutomation() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را انتخاب کن.');
+      return;
+    }
+    final trackKey = base64Url.encode(utf8.encode(track.path));
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => VolumeAutomationScreen(
-          initialRanges: List<VolumeRange>.from(_volumeRanges),
+          initialRanges: List<VolumeRange>.from(
+            _volumeRangesByTrack[trackKey] ?? const <VolumeRange>[],
+          ),
           onSave: (ranges) async {
             final preferences = await SharedPreferences.getInstance();
+            final key = 'volume_ranges_v1_$trackKey';
             await preferences.setString(
-              'volume_ranges_v1',
+              key,
               jsonEncode(ranges.map((range) => range.toMap()).toList()),
             );
             if (!mounted) return;
             setState(() {
-              _volumeRanges = List<VolumeRange>.from(ranges)
+              _volumeRangesByTrack[trackKey] = List<VolumeRange>.from(ranges)
                 ..sort((a, b) => a.startMs.compareTo(b.startMs));
               _lastAppliedVolume = null;
             });
