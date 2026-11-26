@@ -108,34 +108,14 @@ class VolumeAutomationProfile {
       }
     }
 
-    final p1 = points[segment];
-    final p2 = points[segment + 1];
-    final p0 = segment > 0 ? points[segment - 1] : p1;
-    final p3 = segment + 2 < points.length ? points[segment + 2] : p2;
-    final span = (p2.timeMs - p1.timeMs).toDouble();
-    final t = ((time - p1.timeMs) / span).clamp(0.0, 1.0);
-    final t2 = t * t;
-    final t3 = t2 * t;
-
-    final slope1 = segment > 0 && p2.timeMs != p0.timeMs
-        ? (p2.volume - p0.volume) / (p2.timeMs - p0.timeMs)
-        : (p2.volume - p1.volume) / span;
-    final slope2 = segment + 2 < points.length && p3.timeMs != p1.timeMs
-        ? (p3.volume - p1.volume) / (p3.timeMs - p1.timeMs)
-        : (p2.volume - p1.volume) / span;
-
-    final m1 = slope1 * span;
-    final m2 = slope2 * span;
-    final value = (2 * t3 - 3 * t2 + 1) * p1.volume +
-        (t3 - 2 * t2 + t) * m1 +
-        (-2 * t3 + 3 * t2) * p2.volume +
-        (t3 - t2) * m2;
-
-    return value
-        .clamp(
-          p1.volume < p2.volume ? p1.volume : p2.volume,
-          p1.volume > p2.volume ? p1.volume : p2.volume,
-        )
+    final start = points[segment];
+    final end = points[segment + 1];
+    final progress =
+        (time - start.timeMs) / (end.timeMs - start.timeMs);
+    // Linear interpolation preserves the exact shape the user drew:
+    // no sine wave, easing, or curve smoothing is introduced.
+    return (start.volume + (end.volume - start.volume) * progress)
+        .clamp(0.0, 1.0)
         .toDouble();
   }
 }

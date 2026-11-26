@@ -7,11 +7,13 @@ class VolumeAutomationScreen extends StatefulWidget {
   const VolumeAutomationScreen({
     super.key,
     required this.initialProfile,
+    required this.hasSavedProfile,
     required this.controller,
     required this.onSave,
   });
 
   final VolumeAutomationProfile initialProfile;
+  final bool hasSavedProfile;
   final VolumeAutomationController controller;
   final Future<void> Function(VolumeAutomationProfile profile) onSave;
 
@@ -21,8 +23,12 @@ class VolumeAutomationScreen extends StatefulWidget {
 
 class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   late VolumeAutomationProfile _profile;
+  late VolumeAutomationProfile _savedProfile;
+  late bool _hasSavedProfile;
+  bool _hasUnsavedChanges = false;
   int _selectedPoint = 0;
-  int? _draggingPoint;
+  final List<Offset> _drawingOffsets = <Offset>[];
+  bool _isDrawing = false;
   bool _saving = false;
   late final TextEditingController _hoursController;
   late final TextEditingController _minutesController;
@@ -32,6 +38,8 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
   void initState() {
     super.initState();
     _profile = widget.initialProfile;
+    _savedProfile = widget.initialProfile;
+    _hasSavedProfile = widget.hasSavedProfile;
     final totalSeconds = (_profile.durationMs / 1000).round();
     _hoursController = TextEditingController(text: (totalSeconds ~/ 3600).toString());
     _minutesController = TextEditingController(text: ((totalSeconds % 3600) ~/ 60).toString());
@@ -58,6 +66,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     final sorted = [...points]..sort((a, b) => a.timeMs.compareTo(b.timeMs));
     setState(() {
       _profile = _profile.copyWith(points: sorted);
+      _hasUnsavedChanges = true;
       _selectedPoint = _selectedPoint.clamp(0, sorted.length - 1).toInt();
     });
   }
@@ -69,71 +78,93 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
         size.height - 34,
       );
 
-  int _nearestPoint(Offset position, Size size) {
+  void _beginFreehand(Offset position, Size size) {
+    if (_isRunning) return;
     final plot = _plotRect(size);
-    var nearest = -1;
-    var distance = 26.0;
-    for (var i = 0; i < _profile.points.length; i++) {
-      final point = _profile.points[i];
-      final pointOffset = Offset(
-        plot.left + (point.timeMs / _profile.durationMs) * plot.width,
-        plot.bottom - point.volume * plot.height,
-      );
-      final candidate = (pointOffset - position).distance;
-      if (candidate < distance) {
-        distance = candidate;
-        nearest = i;
-      }
-    }
-    return nearest;
+    if (!plot.contains(position)) return;
+    setState(() {
+      _drawingOffsets
+        ..clear()
+        ..add(position);
+      _isDrawing = true;
+    });
   }
 
-  void _addPoint(Offset position, Size size) {
-    if (_isRunning || _profile.points.length >= 10) return;
+  void _appendFreehand(Offset position, Size size) {
+    if (_isRunning || !_isDrawing) return;
     final plot = _plotRect(size);
-    final x = ((position.dx - plot.left) / plot.width).clamp(0.0, 1.0);
-    final y = (1 - (position.dy - plot.top) / plot.height).clamp(0.0, 1.0);
-    final time = (x * _profile.durationMs).round();
-    if (time <= 0 || time >= _profile.durationMs) return;
-    if (_profile.points.any((point) => (point.timeMs - time).abs() < 250)) return;
-
-    final points = [..._profile.points, VolumeAutomationPoint(
-      timeMs: time,
-      volume: y.toDouble(),
-    )]..sort((a, b) => a.timeMs.compareTo(b.timeMs));
-    _selectedPoint = points.indexWhere((point) => point.timeMs == time);
-    _setPoints(points);
-  }
-
-  void _movePoint(Offset position, Size size) {
-    final index = _draggingPoint;
-    if (_isRunning || index == null) return;
-    final plot = _plotRect(size);
-    final old = _profile.points[index];
-    var time = old.timeMs;
-    if (index != 0 && index != _profile.points.length - 1) {
-      final x = ((position.dx - plot.left) / plot.width).clamp(0.0, 1.0);
-      final minimum = _profile.points[index - 1].timeMs + 100;
-      final maximum = _profile.points[index + 1].timeMs - 100;
-      time = (x * _profile.durationMs).round().clamp(minimum, maximum).toInt();
-    }
-    final volume = (1 - (position.dy - plot.top) / plot.height)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    final points = [..._profile.points];
-    points[index] = VolumeAutomationPoint(timeMs: time, volume: volume);
-    _setPoints(points);
-  }
-
-  void _removeSelectedPoint() {
-    if (_isRunning ||
-        _selectedPoint <= 0 ||
-        _selectedPoint >= _profile.points.length - 1) {
+    final point = Offset(
+      position.dx.clamp(plot.left, plot.right).toDouble(),
+      position.dy.clamp(plot.top, plot.bottom).toDouble(),
+    );
+    if (_drawingOffsets.isNotEmpty &&
+        (point - _drawingOffsets.last).distance < 2.0) {
       return;
     }
-    final points = [..._profile.points]..removeAt(_selectedPoint);
-    _selectedPoint = (_selectedPoint - 1).clamp(0, points.length - 1).toInt();
+    setState(() => _drawingOffsets.add(point));
+  }
+
+  void _finishFreehand(Size size) {
+    if (!_isDrawing) return;
+    final plot = _plotRect(size);
+    final stroke = List<Offset>.of(_drawingOffsets);
+    setState(() {
+      _isDrawing = false;
+      _drawingOffsets.clear();
+    });
+    if (stroke.length < 2) return;
+
+    // The horizontal axis is elapsed time. Keep the user's stroke in
+    // left-to-right order so the resulting profile is deterministic.
+    final raw = <VolumeAutomationPoint>[];
+    for (final offset in stroke) {
+      final normalizedX =
+          ((offset.dx - plot.left) / plot.width).clamp(0.0, 1.0);
+      final normalizedY =
+          (1 - (offset.dy - plot.top) / plot.height).clamp(0.0, 1.0);
+      final timeMs = (normalizedX * _profile.durationMs).round();
+      final sample = VolumeAutomationPoint(
+        timeMs: timeMs,
+        volume: normalizedY.toDouble(),
+      );
+      if (raw.isNotEmpty && timeMs < raw.last.timeMs) continue;
+      if (raw.isNotEmpty && timeMs == raw.last.timeMs) {
+        // Preserve the final vertical position when the finger moves without
+        // advancing along the time axis.
+        raw[raw.length - 1] = sample;
+      } else {
+        raw.add(sample);
+      }
+    }
+    if (raw.length < 2) return;
+
+    final points = <VolumeAutomationPoint>[
+      if (raw.first.timeMs > 0)
+        VolumeAutomationPoint(timeMs: 0, volume: raw.first.volume),
+      ...raw,
+    ];
+    if (points.last.timeMs < _profile.durationMs) {
+      points.add(VolumeAutomationPoint(
+        timeMs: _profile.durationMs,
+        volume: points.last.volume,
+      ));
+    } else if (points.last.timeMs > _profile.durationMs) {
+      points[points.length - 1] = VolumeAutomationPoint(
+        timeMs: _profile.durationMs,
+        volume: points.last.volume,
+      );
+    }
+    if (points.length < 2) return;
+    _selectedPoint = 0;
     _setPoints(points);
+  }
+
+  void _clearDrawing() {
+    if (_isRunning) return;
+    _setPoints([
+      const VolumeAutomationPoint(timeMs: 0, volume: 1),
+      VolumeAutomationPoint(timeMs: _profile.durationMs, volume: 1),
+    ]);
   }
 
   void _changeDuration() {
@@ -183,6 +214,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
         repeat: _profile.repeat,
         points: points,
       );
+      _hasUnsavedChanges = true;
     });
   }
 
@@ -191,6 +223,11 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     try {
       await widget.onSave(_profile);
       if (!mounted) return;
+      setState(() {
+        _savedProfile = _profile;
+        _hasSavedProfile = true;
+        _hasUnsavedChanges = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الگوی تغییرات صدا ذخیره شد.')),
       );
@@ -204,13 +241,20 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     }
   }
 
-  void _togglePlayback() {
-    if (_isRunning) {
-      widget.controller.stop();
+  void _setAutomationEnabled(bool enabled) {
+    if (enabled) {
+      if (!_hasSavedProfile || _hasUnsavedChanges) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ابتدا تغییرات نمودار را ذخیره کن، سپس آن را فعال کن.'),
+          ),
+        );
+        return;
+      }
+      widget.controller.start(_savedProfile);
     } else {
-      widget.controller.start(_profile);
+      widget.controller.stop();
     }
-    setState(() {});
   }
 
   @override
@@ -249,48 +293,18 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                   );
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTapDown: (details) {
-                      if (_isRunning) return;
-                      final nearest = _nearestPoint(details.localPosition, size);
-                      if (nearest >= 0) {
-                        setState(() => _selectedPoint = nearest);
-                      } else {
-                        _addPoint(details.localPosition, size);
-                      }
-                    },
-                    onPanStart: (details) {
-                      if (_isRunning) return;
-                      var nearest = _nearestPoint(details.localPosition, size);
-                      if (nearest < 0) {
-                        _addPoint(details.localPosition, size);
-                        nearest = _nearestPoint(details.localPosition, size);
-                      }
-                      if (nearest >= 0) {
-                        setState(() {
-                          _selectedPoint = nearest;
-                          _draggingPoint = nearest;
-                        });
-                      }
-                    },
-                    onPanUpdate: (details) => _movePoint(
-                      details.localPosition,
-                      size,
-                    ),
-                    onPanEnd: (_) => setState(() => _draggingPoint = null),
-                    onLongPressStart: (details) {
-                      if (_isRunning) return;
-                      final nearest = _nearestPoint(details.localPosition, size);
-                      if (nearest > 0 &&
-                          nearest < _profile.points.length - 1) {
-                        setState(() => _selectedPoint = nearest);
-                        _removeSelectedPoint();
-                      }
-                    },
+                    onPanStart: (details) =>
+                        _beginFreehand(details.localPosition, size),
+                    onPanUpdate: (details) =>
+                        _appendFreehand(details.localPosition, size),
+                    onPanEnd: (_) => _finishFreehand(size),
+                    onPanCancel: () => _finishFreehand(size),
                     child: CustomPaint(
                       size: size,
                       painter: _VolumeCurvePainter(
                         profile: _profile,
-                        selectedPoint: _selectedPoint,
+                        selectedPoint: -1,
+                        drawingOffsets: List<Offset>.of(_drawingOffsets),
                         gridColor: colors.outlineVariant,
                         curveColor: colors.primary,
                         pointColor: colors.primary,
@@ -304,7 +318,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'برای افزودن نقطه لمس کن؛ برای جابه‌جایی آن را بکش و برای حذف، چند لحظه نگه دار.',
+              'انگشتت را از سمت چپ به راست روی نمودار بکش؛ مسیر رسم‌شده مستقیماً تغییرات صدا را تعیین می‌کند.',
               textDirection: TextDirection.rtl,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -370,21 +384,19 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
               value: _profile.repeat,
               onChanged: _isRunning
                   ? null
-                  : (value) => setState(
-                        () => _profile = _profile.copyWith(repeat: value),
-                      ),
+                  : (value) => setState(() {
+                        _profile = _profile.copyWith(repeat: value);
+                        _hasUnsavedChanges = true;
+                      }),
             ),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _isRunning || _selectedPoint == 0 ||
-                            _selectedPoint == _profile.points.length - 1
-                        ? null
-                        : _removeSelectedPoint,
-                    icon: const Icon(Icons.remove_circle_outline),
-                    label: const Text('حذف نقطه انتخابی'),
+                    onPressed: _isRunning ? null : _clearDrawing,
+                    icon: const Icon(Icons.restart_alt),
+                    label: const Text('پاک‌کردن مسیر'),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -406,10 +418,20 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
             const SizedBox(height: 12),
             ValueListenableBuilder<bool>(
               valueListenable: widget.controller.isRunning,
-              builder: (context, running, _) => FilledButton.tonalIcon(
-                onPressed: _togglePlayback,
-                icon: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded),
-                label: Text(running ? 'توقف اجرای نمودار' : 'شروع پیش‌نمایش و اجرا'),
+              builder: (context, running, _) => SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('اجرای نمودار ذخیره‌شده'),
+                subtitle: Text(
+                  running
+                      ? 'فعال است؛ تغییرات نمودار روی صدای پلیر اعمال می‌شود.'
+                      : (!_hasSavedProfile || _hasUnsavedChanges)
+                          ? 'برای فعال‌سازی، ابتدا نمودار را ذخیره کن.'
+                          : 'غیرفعال است؛ برای اجرای نمودار کلید را روشن کن.',
+                ),
+                value: running,
+                onChanged: (!_hasSavedProfile || _hasUnsavedChanges) && !running
+                    ? null
+                    : _setAutomationEnabled,
               ),
             ),
             ValueListenableBuilder<double>(
@@ -460,6 +482,7 @@ class _VolumeCurvePainter extends CustomPainter {
     required this.pointColor,
     required this.textColor,
     required this.surfaceColor,
+    required this.drawingOffsets,
   });
 
   final VolumeAutomationProfile profile;
@@ -469,6 +492,7 @@ class _VolumeCurvePainter extends CustomPainter {
   final Color pointColor;
   final Color textColor;
   final Color surfaceColor;
+  final List<Offset> drawingOffsets;
 
   Rect _plotRect(Size size) => Rect.fromLTRB(
         42,
@@ -516,18 +540,16 @@ class _VolumeCurvePainter extends CustomPainter {
     canvas.drawLine(Offset(plot.left, plot.bottom), Offset(plot.right, plot.bottom), axisPaint);
 
     final path = Path();
-    const samples = 180;
-    for (var i = 0; i <= samples; i++) {
-      final time = (profile.durationMs * i / samples).round();
-      final value = profile.valueAt(time);
-      final point = Offset(
-        plot.left + plot.width * time / profile.durationMs,
-        plot.bottom - plot.height * value,
+    for (var i = 0; i < profile.points.length; i++) {
+      final point = profile.points[i];
+      final offset = Offset(
+        plot.left + plot.width * point.timeMs / profile.durationMs,
+        plot.bottom - plot.height * point.volume,
       );
       if (i == 0) {
-        path.moveTo(point.dx, point.dy);
+        path.moveTo(offset.dx, offset.dy);
       } else {
-        path.lineTo(point.dx, point.dy);
+        path.lineTo(offset.dx, offset.dy);
       }
     }
 
@@ -549,15 +571,27 @@ class _VolumeCurvePainter extends CustomPainter {
       );
       canvas.drawCircle(
         offset,
-        i == selectedPoint ? 8 : 6,
+        i == selectedPoint ? 8 : 3,
         Paint()..color = pointColor,
       );
-      canvas.drawCircle(
-        offset,
-        i == selectedPoint ? 3 : 2,
-        Paint()..color = surfaceColor,
+    }
+
+    if (drawingOffsets.isNotEmpty) {
+      final preview = Path()..moveTo(drawingOffsets.first.dx, drawingOffsets.first.dy);
+      for (final offset in drawingOffsets.skip(1)) {
+        preview.lineTo(offset.dx, offset.dy);
+      }
+      canvas.drawPath(
+        preview,
+        Paint()
+          ..color = curveColor
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
       );
     }
+
   }
 
   void _drawLabel(
@@ -584,6 +618,7 @@ class _VolumeCurvePainter extends CustomPainter {
         oldDelegate.selectedPoint != selectedPoint ||
         oldDelegate.gridColor != gridColor ||
         oldDelegate.curveColor != curveColor ||
-        oldDelegate.textColor != textColor;
+        oldDelegate.textColor != textColor ||
+        oldDelegate.drawingOffsets != drawingOffsets;
   }
 }
