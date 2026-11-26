@@ -985,11 +985,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           actions: [
-            IconButton(
-              tooltip: 'به‌روزرسانی کتابخانه',
-              onPressed: _openFolderManager,
-              icon: const Icon(Icons.sync),
-            ),
             PopupMenuButton<String>(
               tooltip: 'زمان‌بندی پخش',
               icon: const Icon(Icons.schedule),
@@ -1014,14 +1009,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(width: 6),
           ],
-          bottom: TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(icon: Icon(Icons.library_music_outlined), text: 'کتابخانه صوتی'),
-              Tab(icon: Icon(Icons.notes_rounded), text: 'متن ویس'),
-              Tab(icon: Icon(Icons.bookmarks_outlined), text: 'نشانک‌ها'),
-              Tab(icon: Icon(Icons.queue_music_rounded), text: 'پلی‌لیست‌ها'),
-            ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(kTextTabBarHeight),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TabBar(
+                    controller: _tabController,
+                    labelStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    unselectedLabelStyle: const TextStyle(fontSize: 10),
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    tabs: const [
+                      Tab(
+                        icon: Icon(Icons.library_music_outlined, size: 17),
+                        text: 'کتابخانه',
+                      ),
+                      Tab(icon: Icon(Icons.notes_rounded, size: 17), text: 'متن'),
+                      Tab(icon: Icon(Icons.bookmarks_outlined, size: 17), text: 'نشانک'),
+                      Tab(icon: Icon(Icons.queue_music_rounded, size: 17), text: 'پلی‌لیست'),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'اسکن پوشه‌ها',
+                  onPressed: _openFolderManager,
+                  icon: const Icon(Icons.folder_open_rounded),
+                ),
+              ],
+            ),
           ),
         ),
         body: Column(
@@ -1340,43 +1358,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       .toDouble();
                   return Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Listener(
-                            onPointerDown: _onBookmarkPointerDown,
-                            onPointerUp: _onBookmarkPointerEnd,
-                            onPointerCancel: _onBookmarkPointerEnd,
-                            child: IconButton(
-                              tooltip:
-                      'لمس: ثبت نشانک | نگه‌داشتن ۳ ثانیه: نمایش فهرست نشانک‌ها',
-                              onPressed: track == null ? null : _handleBookmarkTap,
-                              icon: const Icon(Icons.bookmark_add_outlined),
-                              color: colors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          IconButton(
-                            tooltip: 'نمایش متن همین فایل صوتی',
-                            onPressed: track == null
-                                ? null
-                                : () {
-                                    setState(() => _lyricsEditing = false);
-                                    _tabController.animateTo(1);
-                                  },
-                            icon: const Icon(Icons.lyrics_outlined),
-                            color: colors.primary,
-                          ),
-                          IconButton(
-                            tooltip: 'افزودن فایل فعلی به پلی‌لیست',
-                            onPressed: track == null
-                                ? null
-                                : () => _tabController.animateTo(3),
-                            icon: const Icon(Icons.playlist_add_rounded),
-                            color: colors.primary,
-                          ),
-                        ],
-                      ),
                       Slider(
                         value: value,
                         max: max > 0 ? max : 1,
