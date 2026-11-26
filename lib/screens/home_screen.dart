@@ -1134,7 +1134,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Material(
       color: colors.surfaceContainerLow,
       child: SafeArea(
-        top: false,
+        top: true,
         bottom: false,
         child: SizedBox(
           height: 48,
