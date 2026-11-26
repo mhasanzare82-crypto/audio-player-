@@ -130,7 +130,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     if (_isRunning) return;
     final nextDuration = seconds.round() * 1000;
     final oldDuration = _profile.durationMs;
-    final points = _profile.points.map((point) {
+    final scaled = _profile.points.map((point) {
       if (point.timeMs == 0) {
         return VolumeAutomationPoint(timeMs: 0, volume: point.volume);
       }
@@ -145,6 +145,17 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
         volume: point.volume,
       );
     }).toList();
+    final points = <VolumeAutomationPoint>[scaled.first];
+    for (var i = 1; i < scaled.length - 1; i++) {
+      final minimum = points.last.timeMs + 100;
+      final maximum = nextDuration - (scaled.length - 1 - i) * 100;
+      final time = scaled[i].timeMs.clamp(minimum, maximum).toInt();
+      points.add(VolumeAutomationPoint(
+        timeMs: time,
+        volume: scaled[i].volume,
+      ));
+    }
+    points.add(scaled.last);
     setState(() {
       _profile = VolumeAutomationProfile(
         durationMs: nextDuration,
@@ -288,10 +299,10 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
               ],
             ),
             Slider(
-              value: durationSeconds.clamp(5, 300).toDouble(),
-              min: 5,
-              max: 300,
-              divisions: 59,
+              value: durationSeconds.clamp(1, 600).toDouble(),
+              min: 1,
+              max: 600,
+              divisions: 599,
               label: '${durationSeconds.round()} ثانیه',
               onChanged: _isRunning ? null : _changeDuration,
             ),
