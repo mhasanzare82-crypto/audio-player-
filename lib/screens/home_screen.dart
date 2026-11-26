@@ -1182,25 +1182,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Tab(
                     height: 68,
                     iconMargin: EdgeInsets.only(bottom: 3),
-                    icon: Icon(Icons.notes_rounded, size: 30),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.notes_rounded, size: 26)),
+                    ),
                     text: 'متن',
                   ),
                   Tab(
                     height: 68,
                     iconMargin: EdgeInsets.only(bottom: 3),
-                    icon: Icon(Icons.bookmarks_outlined, size: 30),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.bookmarks_outlined, size: 26)),
+                    ),
                     text: 'نشانک',
                   ),
                   Tab(
                     height: 68,
                     iconMargin: EdgeInsets.only(bottom: 3),
-                    icon: Icon(Icons.queue_music_rounded, size: 30),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.queue_music_rounded, size: 26)),
+                    ),
                     text: 'پلی‌لیست',
                   ),
                   Tab(
                     height: 68,
                     iconMargin: EdgeInsets.only(bottom: 3),
-                    icon: Icon(Icons.library_music_outlined, size: 30),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.library_music_outlined, size: 26)),
+                    ),
                     text: 'کتابخانه',
                   ),
                 ],
@@ -1216,12 +1232,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ? 'حذف از علاقه‌مندی‌ها'
                         : 'افزودن به علاقه‌مندی‌ها',
                 onPressed: _toggleCurrentTrackFavorite,
-                icon: Icon(
-                  _currentTrackIsFavorite
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  size: 30,
-                  color: _currentTrackIsFavorite ? colors.error : colors.onSurfaceVariant,
+                padding: EdgeInsets.zero,
+                icon: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Center(
+                    child: Icon(
+                      _currentTrackIsFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      size: 26,
+                      color: _currentTrackIsFavorite
+                          ? colors.error
+                          : colors.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
             ),
