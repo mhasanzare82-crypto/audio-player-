@@ -1340,49 +1340,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       .toDouble();
                   return Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton(
-                            tooltip: 'کتابخانه صوتی',
-                            onPressed: () => _tabController.animateTo(0),
-                            icon: const Icon(Icons.library_music_outlined),
-                            color: colors.primary,
-                          ),
-                          Listener(
-                            onPointerDown: _onBookmarkPointerDown,
-                            onPointerUp: _onBookmarkPointerEnd,
-                            onPointerCancel: _onBookmarkPointerEnd,
-                            child: IconButton(
-                              tooltip:
-                      'لمس: ثبت نشانک | نگه‌داشتن ۳ ثانیه: نمایش فهرست نشانک‌ها',
-                              onPressed: track == null ? null : _handleBookmarkTap,
-                              icon: const Icon(Icons.bookmark_add_outlined),
-                              color: colors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          IconButton(
-                            tooltip: 'نمایش متن همین فایل صوتی',
-                            onPressed: track == null
-                                ? null
-                                : () {
-                                    setState(() => _lyricsEditing = false);
-                                    _tabController.animateTo(1);
-                                  },
-                            icon: const Icon(Icons.lyrics_outlined),
-                            color: colors.primary,
-                          ),
-                          IconButton(
-                            tooltip: 'افزودن فایل فعلی به پلی‌لیست',
-                            onPressed: track == null
-                                ? null
-                                : () => _tabController.animateTo(3),
-                            icon: const Icon(Icons.playlist_add_rounded),
-                            color: colors.primary,
-                          ),
-                        ],
-                      ),
                       Slider(
                         value: value,
                         max: max > 0 ? max : 1,
