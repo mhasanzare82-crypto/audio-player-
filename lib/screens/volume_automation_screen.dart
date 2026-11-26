@@ -359,6 +359,20 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                 label: Text(running ? 'توقف اجرای نمودار' : 'شروع پیش‌نمایش و اجرا'),
               ),
             ),
+            ValueListenableBuilder<double>(
+              valueListenable: widget.controller.currentValue,
+              builder: (context, value, _) {
+                if (widget.controller.isRunning.value ||
+                    (value - 1).abs() < 0.001) {
+                  return const SizedBox.shrink();
+                }
+                return TextButton.icon(
+                  onPressed: widget.controller.stop,
+                  icon: const Icon(Icons.volume_up_rounded),
+                  label: const Text('بازگردانی صدای پایه'),
+                );
+              },
+            ),
             const SizedBox(height: 8),
             ValueListenableBuilder<double>(
               valueListenable: widget.controller.currentValue,
