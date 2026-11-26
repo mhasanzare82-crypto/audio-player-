@@ -1,6 +1,8 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
@@ -111,15 +113,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _lyrics = lyrics;
         _playlists
           ..clear()
-          ..addAll(savedPlaylists.map((playlist) => playlist.copyWith(
-                trackPaths: playlist.trackPaths
-                    .where((path) => available.any((track) => track.path == path))
-                    .toList(),
-              )));
+          ..addAll(savedPlaylists);
         _bookmarks
           ..clear()
-          ..addAll(savedBookmarks.where((bookmark) =>
-              available.any((track) => track.path == bookmark.audioPath)));
+          ..addAll(savedBookmarks);
         _loading = false;
       });
       if (_tracks.isNotEmpty) {
@@ -128,19 +125,109 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (available.length != saved.length) {
         await _store.saveTracks(_tracks);
       }
-      if (_bookmarks.length != savedBookmarks.length) {
-        await _store.saveBookmarks(_bookmarks);
-      }
-      if (AudioPlaylist.encodeList(_playlists) !=
-          AudioPlaylist.encodeList(savedPlaylists)) {
-        await _store.savePlaylists(_playlists);
-      }
+
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _persistTracks() => _store.saveTracks(_tracks);
+
+  Future<void> _createBackup() async {
+    try {
+      final contents = await _store.exportBackupJson();
+      final now = DateTime.now();
+      String two(int value) => value.toString().padLeft(2, '0');
+      final fileName = 'audio_player_backup_${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}.json';
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'ذخیره نسخه پشتیبان',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        bytes: Uint8List.fromList(utf8.encode(contents)),
+      );
+      if (savedPath == null) return;
+      _showMessage('نسخه پشتیبان با موفقیت ذخیره شد.');
+    } catch (error) {
+      _showMessage('تهیه نسخه پشتیبان ناموفق بود: $error');
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) {
+        _showMessage('خواندن فایل پشتیبان ممکن نشد.');
+        return;
+      }
+      final contents = utf8.decode(bytes);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('بازیابی نسخه پشتیبان'),
+          content: const Text(
+            'اطلاعات فعلی متن‌ها، نشانک‌ها و پلی‌لیست‌ها با اطلاعات داخل فایل جایگزین می‌شوند. این عملیات قابل بازگشت نیست. فایل‌های صوتی داخل نسخه پشتیبان نیستند.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('انصراف'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('بازیابی اطلاعات'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+
+      await _store.restoreBackupJson(contents);
+      final savedTracks = await _store.loadTracks();
+      final availableTracks = savedTracks
+          .where((track) =>
+              track.path.startsWith('content://') || File(track.path).existsSync())
+          .toList();
+      final restoredLyrics = await _store.loadLyrics();
+      final restoredBookmarks = await _store.loadBookmarks();
+      final restoredPlaylists = await _store.loadPlaylists();
+
+      if (!mounted) return;
+      setState(() {
+        _tracks
+          ..clear()
+          ..addAll(availableTracks);
+        _lyrics = restoredLyrics;
+        _bookmarks
+          ..clear()
+          ..addAll(restoredBookmarks);
+        _playlists
+          ..clear()
+          ..addAll(restoredPlaylists);
+        _currentIndex = -1;
+        _expandedPlaylistId = null;
+        _lyricsEditing = false;
+      });
+
+      if (_tracks.isEmpty) {
+        await _player.stop();
+      } else {
+        await _replacePlaylist(autoplay: false);
+      }
+      _showMessage(
+        'اطلاعات بازیابی شد. ${savedTracks.length - availableTracks.length} فایل صوتی در دسترس نبود؛ در صورت نیاز آن‌ها را دوباره به کتابخانه اضافه کن.',
+      );
+    } catch (error) {
+      _showMessage('بازیابی نسخه پشتیبان ناموفق بود: $error');
+    }
+  }
 
   Future<void> _pickAudio() async {
     try {
@@ -1034,6 +1121,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 constraints: const BoxConstraints.tightFor(width: 34, height: 34),
                 onPressed: _openFolderManager,
                 icon: const Icon(Icons.folder_open_rounded, size: 19),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'پشتیبان‌گیری و بازیابی',
+                iconSize: 19,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                onSelected: (value) {
+                  if (value == 'backup') _createBackup();
+                  if (value == 'restore') _restoreBackup();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'backup',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.save_alt_rounded),
+                      title: Text('تهیه نسخه پشتیبان'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'restore',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.settings_backup_restore_rounded),
+                      title: Text('بازیابی نسخه پشتیبان'),
+                    ),
+                  ),
+                ],
               ),
               PopupMenuButton<String>(
                 tooltip: 'زمان‌بندی شروع و توقف',
