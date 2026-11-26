@@ -1,4 +1,4 @@
-package com.mhasanzare82.audioplayer
+package com.mhasanzare82.audioplayerv2
 
 import android.content.Intent
 import android.content.BroadcastReceiver
