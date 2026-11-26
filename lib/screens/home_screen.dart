@@ -1017,7 +1017,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           bottom: TabBar(
             controller: _tabController,
             tabs: const [
-              Tab(icon: Icon(Icons.library_music_outlined), text: 'کتابخانه صوتی'),
+              Tab(text: 'کتابخانه صوتی'),
               Tab(icon: Icon(Icons.notes_rounded), text: 'متن ویس'),
               Tab(icon: Icon(Icons.bookmarks_outlined), text: 'نشانک‌ها'),
               Tab(icon: Icon(Icons.queue_music_rounded), text: 'پلی‌لیست‌ها'),
@@ -1343,6 +1343,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          IconButton(
+                            tooltip: 'کتابخانه صوتی',
+                            onPressed: () => _tabController.animateTo(0),
+                            icon: const Icon(Icons.library_music_outlined),
+                            color: colors.primary,
+                          ),
                           Listener(
                             onPointerDown: _onBookmarkPointerDown,
                             onPointerUp: _onBookmarkPointerEnd,
