@@ -606,81 +606,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBookmarksTab(ColorScheme colors) {
-    if (_bookmarks.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.bookmarks_outlined, size: 42, color: colors.primary),
-              const SizedBox(height: 12),
-              const Text(
-                'هنوز نشانکی ثبت نشده است.',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'هنگام پخش فایل، دکمه ثبت نشانک کنار عنوان فایل را لمس کن.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    final items = List<AudioBookmark>.from(_bookmarks)
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 7),
-      itemBuilder: (context, index) {
-        final bookmark = items[index];
-        final trackIndex = _tracks.indexWhere(
-          (track) => track.path == bookmark.audioPath,
-        );
-        final selected = trackIndex == _currentIndex;
-        return Card(
-          child: ListTile(
-            leading: Icon(
-              Icons.music_note_rounded,
-              size: 20,
-              color: selected ? colors.primary : colors.onSurfaceVariant,
-            ),
-            title: Text(
-              bookmark.audioTitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-            subtitle: Text(
-              '${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  ${_formatDateTime(bookmark.createdAt)}',
-              style: const TextStyle(fontSize: 11),
-            ),
-            onTap: trackIndex < 0 ? null : () => _jumpToBookmark(bookmark),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: 'رفتن به زمان نشانک',
-                  onPressed: trackIndex < 0
-                ? null
-                : () => _jumpToBookmark(bookmark),
-                  icon: const Icon(Icons.bookmark_rounded),
-                  color: colors.primary,
-                ),
-                IconButton(
-                  tooltip: 'حذف نشانک',
-                  onPressed: () => _removeBookmark(bookmark.id),
-                  icon: const Icon(Icons.delete_outline),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    return const Center(
+      child: Text(
+        'نشانک ها',
+        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      ),
     );
   }
 
