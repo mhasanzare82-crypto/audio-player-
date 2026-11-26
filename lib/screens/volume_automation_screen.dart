@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+// Intentionally kept empty while the feature is redesigned.
 class VolumeAutomationScreen extends StatelessWidget {
   const VolumeAutomationScreen({super.key});
 
