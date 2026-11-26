@@ -47,6 +47,10 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     // inherit its volume. The user can still edit all three values.
     final previousRange = _ranges.isEmpty ? null : _ranges.last;
     final defaultStartMs = previousRange?.endMs ?? 0;
+    final defaultDurationMs = previousRange == null
+        ? 60000
+        : previousRange.endMs - previousRange.startMs;
+    final defaultEndMs = defaultStartMs + defaultDurationMs;
     final defaultPercent = previousRange?.percent ?? 15;
     final startController = TextEditingController(
       text: existing == null
@@ -55,7 +59,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     );
     final endController = TextEditingController(
       text: existing == null
-          ? _formatTime(defaultStartMs + 60000)
+          ? _formatTime(defaultEndMs)
           : _formatTime(existing.endMs),
     );
     var percent = existing?.percent ?? defaultPercent;
