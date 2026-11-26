@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final LibraryStore _store = LibraryStore();
   final FolderLibraryService _folderService = FolderLibraryService();
   final List<AudioTrack> _tracks = [];
+  final List<Map<String, String>> _libraryFolders = [];
   Map<String, String> _lyrics = {};
   int _currentIndex = -1;
   bool _loading = true;
@@ -54,6 +55,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final List<AudioBookmark> _bookmarks = [];
   final List<AudioPlaylist> _playlists = [];
   String? _expandedPlaylistId;
+  static const String _favoritesPlaylistId = 'audio_player_favorites_v1';
+  static const String _favoritesPlaylistName = 'علاقه‌مندی‌ها';
 
   AudioTrack? get _currentTrack =>
       _currentIndex >= 0 && _currentIndex < _tracks.length
@@ -63,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 4, initialIndex: 3, vsync: this);
     _configureAudioSession();
     ScheduledPlaybackService.setStopHandler(() async {
       await _player.stop();
@@ -105,9 +108,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       await _player.setVolume(savedVolume);
       if (mounted) setState(() => _volume = savedVolume);
       final saved = await _store.loadTracks();
+      final savedFolders = await _store.loadFolders();
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
       final savedPlaylists = await _store.loadPlaylists();
+      if (!savedPlaylists.any((item) => item.id == _favoritesPlaylistId)) {
+        savedPlaylists.add(const AudioPlaylist(
+          id: _favoritesPlaylistId,
+          name: _favoritesPlaylistName,
+          trackPaths: [],
+        ));
+        await _store.savePlaylists(savedPlaylists);
+      }
       final available = saved
           .where((track) => track.path.startsWith('content://') ||
               File(track.path).existsSync())
@@ -115,6 +127,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (!mounted) return;
       setState(() {
         _tracks.addAll(available);
+        _libraryFolders
+          ..clear()
+          ..addAll(savedFolders);
         _lyrics = lyrics;
         _playlists
           ..clear()
@@ -203,6 +218,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final restoredLyrics = await _store.loadLyrics();
       final restoredBookmarks = await _store.loadBookmarks();
       final restoredPlaylists = await _store.loadPlaylists();
+      if (!restoredPlaylists.any((item) => item.id == _favoritesPlaylistId)) {
+        restoredPlaylists.add(const AudioPlaylist(
+          id: _favoritesPlaylistId,
+          name: _favoritesPlaylistName,
+          trackPaths: [],
+        ));
+        await _store.savePlaylists(restoredPlaylists);
+      }
 
       if (!mounted) return;
       setState(() {
@@ -370,6 +393,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _scanSelectedFolders(List<Map<String, String>> folders) async {
     try {
       await _store.saveFolders(folders);
+      if (mounted) {
+        setState(() {
+          _libraryFolders
+            ..clear()
+            ..addAll(folders.map((folder) => Map<String, String>.from(folder)));
+        });
+      }
       _showMessage('در حال اسکن پوشه‌ها...');
       final found = await _folderService.scanFolders(
         folders.map((folder) => folder['uri']!).toList(),
@@ -576,79 +606,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBookmarksTab(ColorScheme colors) {
-    if (_bookmarks.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.bookmarks_outlined, size: 58, color: colors.primary),
-              const SizedBox(height: 12),
-              const Text(
-                'هنوز نشانکی ثبت نشده است.',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'هنگام پخش فایل، دکمه ثبت نشانک کنار عنوان فایل را لمس کن.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    final items = List<AudioBookmark>.from(_bookmarks)
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 7),
-      itemBuilder: (context, index) {
-        final bookmark = items[index];
-        final trackIndex = _tracks.indexWhere(
-          (track) => track.path == bookmark.audioPath,
-        );
-        final selected = trackIndex == _currentIndex;
-        return Card(
-          child: ListTile(
-            leading: Icon(
-              Icons.music_note_rounded,
-              color: selected ? colors.primary : colors.onSurfaceVariant,
-            ),
-            title: Text(
-              bookmark.audioTitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: Text(
-              '${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  ${_formatDateTime(bookmark.createdAt)}',
-            ),
-            onTap: trackIndex < 0 ? null : () => _jumpToBookmark(bookmark),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: 'رفتن به زمان نشانک',
-                  onPressed: trackIndex < 0
-                ? null
-                : () => _jumpToBookmark(bookmark),
-                  icon: const Icon(Icons.bookmark_rounded),
-                  color: colors.primary,
-                ),
-                IconButton(
-                  tooltip: 'حذف نشانک',
-                  onPressed: () => _removeBookmark(bookmark.id),
-                  icon: const Icon(Icons.delete_outline),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    return const Center(
+      child: Text(
+        'نشانک ها',
+        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      ),
     );
   }
 
@@ -725,7 +687,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await _store.savePlaylists(_playlists);
   }
 
+  bool get _currentTrackIsFavorite {
+    final track = _currentTrack;
+    if (track == null) return false;
+    final index = _playlists.indexWhere((item) => item.id == _favoritesPlaylistId);
+    return index >= 0 && _playlists[index].trackPaths.contains(track.path);
+  }
+
+  Future<void> _toggleCurrentTrackFavorite() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را برای پخش انتخاب کن.');
+      return;
+    }
+    var index = _playlists.indexWhere((item) => item.id == _favoritesPlaylistId);
+    if (index < 0) {
+      _playlists.add(const AudioPlaylist(
+        id: _favoritesPlaylistId,
+        name: _favoritesPlaylistName,
+        trackPaths: [],
+      ));
+      index = _playlists.length - 1;
+    }
+    final favorites = _playlists[index];
+    final isFavorite = favorites.trackPaths.contains(track.path);
+    setState(() {
+      _playlists[index] = favorites.copyWith(
+        trackPaths: isFavorite
+            ? favorites.trackPaths.where((path) => path != track.path).toList()
+            : [...favorites.trackPaths, track.path],
+      );
+      _expandedPlaylistId = _favoritesPlaylistId;
+    });
+    await _store.savePlaylists(_playlists);
+    _showMessage(isFavorite
+        ? '«${track.title}» از علاقه‌مندی‌ها حذف شد.'
+        : '«${track.title}» به علاقه‌مندی‌ها اضافه شد.');
+  }
+
   Future<void> _deletePlaylist(AudioPlaylist playlist) async {
+    if (playlist.id == _favoritesPlaylistId) {
+      _showMessage('پلی‌لیست علاقه‌مندی‌ها قابل حذف نیست.');
+      return;
+    }
     setState(() => _playlists.removeWhere((item) => item.id == playlist.id));
     await _store.savePlaylists(_playlists);
   }
@@ -734,60 +738,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final current = _currentTrack;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('پلی‌لیست‌های من',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            )),
-                    const SizedBox(height: 3),
-                    Text(
-                      current == null
-                          ? 'برای افزودن فایل، ابتدا یک صوت پخش کن.'
-                          : 'فایل فعلی: ${current.title}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: colors.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: _createPlaylist,
-                icon: const Icon(Icons.add),
-                label: const Text('پلی‌لیست جدید'),
-              ),
-            ],
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: IconButton.filled(
+              tooltip: 'پلی‌لیست جدید',
+              onPressed: _createPlaylist,
+              icon: const Icon(Icons.add_rounded),
+            ),
           ),
         ),
         Expanded(
           child: _playlists.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.queue_music_rounded,
-                            size: 60, color: colors.primary),
-                        const SizedBox(height: 12),
-                        const Text('هنوز پلی‌لیستی نساخته‌ای.'),
-                        const SizedBox(height: 6),
-                        Text(
-                          'ابتدا پلی‌لیست بساز، سپس فایل در حال پخش را به آن اضافه کن.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: colors.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
+              ? const SizedBox.shrink()
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                   itemCount: _playlists.length,
@@ -808,33 +772,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onExpansionChanged: (value) => setState(() {
                           _expandedPlaylistId = value ? playlist.id : null;
                         }),
-                        leading: Icon(Icons.queue_music_rounded,
-                            color: colors.primary),
-                        title: Text(playlist.name,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Text('${tracks.length} فایل صوتی'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: 'افزودن فایل فعلی به این پلی‌لیست',
-                              onPressed: current == null
-                                  ? null
-                                  : () => _addCurrentTrackToPlaylist(playlist),
-                              icon: const Icon(Icons.playlist_add_rounded),
-                            ),
-                            PopupMenuButton<String>(
-                              onSelected: (value) {
-                                if (value == 'delete') _deletePlaylist(playlist);
-                              },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('حذف پلی‌لیست'),
-                                ),
-                              ],
-                            ),
-                          ],
+                        title: Text(
+                          playlist.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
                         children: [
                           if (current != null)
@@ -842,10 +785,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               alignment: Alignment.centerRight,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: TextButton.icon(
+                                child: TextButton(
                                   onPressed: () => _addCurrentTrackToPlaylist(playlist),
-                                  icon: const Icon(Icons.playlist_add),
-                                  label: const Text('افزودن فایل فعلی به این پلی‌لیست'),
+                                  child: const Text('افزودن آهنگ در حال پخش'),
+                                ),
+                              ),
+                            ),
+                          if (playlist.id != _favoritesPlaylistId)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: TextButton(
+                                  onPressed: () => _deletePlaylist(playlist),
+                                  child: const Text('حذف پلی‌لیست'),
                                 ),
                               ),
                             ),
@@ -857,19 +810,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           else
                             ...tracks.map((track) => ListTile(
                                   dense: true,
-                                  leading: const Icon(Icons.music_note_outlined),
-                                  title: Text(track.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis),
+                                  title: Text(
+                                    track.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                   onTap: () {
                                     final trackIndex = _tracks.indexOf(track);
                                     if (trackIndex >= 0) _playTrack(trackIndex);
                                   },
-                                  trailing: IconButton(
-                                    tooltip: 'حذف از پلی‌لیست',
+                                  trailing: TextButton(
                                     onPressed: () => _removeFromPlaylist(
-                                        playlist, track.path),
-                                    icon: const Icon(Icons.remove_circle_outline),
+                                      playlist,
+                                      track.path,
+                                    ),
+                                    child: const Text('حذف'),
                                   ),
                                 )),
                         ],
@@ -1048,14 +1003,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Scaffold(
         body: Column(
           children: [
+            _buildPlayerToolbar(colors),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildLibraryTab(colors),
                   _buildLyricsTab(colors),
                   _buildBookmarksTab(colors),
                   _buildPlaylistsTab(colors),
+                  _buildLibraryTab(colors),
                 ],
               ),
             ),
@@ -1072,82 +1028,135 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: SafeArea(
         top: false,
         bottom: false,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TabBar(
+        child: Row(
+          children: [
+            Expanded(
+              child: TabBar(
                 controller: _tabController,
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
+                isScrollable: false,
                 labelStyle: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  height: 1,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
                 ),
                 unselectedLabelStyle: const TextStyle(
-                  fontSize: 8,
-                  height: 1,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  height: 1.0,
                 ),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+                labelPadding: EdgeInsets.zero,
                 indicatorSize: TabBarIndicatorSize.label,
                 tabs: const [
                   Tab(
-                    height: 46,
-                    iconMargin: EdgeInsets.only(bottom: 1),
-                    icon: Icon(Icons.library_music_outlined, size: 16),
-                    text: 'کتابخانه',
-                  ),
-                  Tab(
-                    height: 46,
-                    iconMargin: EdgeInsets.only(bottom: 1),
-                    icon: Icon(Icons.notes_rounded, size: 16),
+                    height: 68,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.notes_rounded, size: 26)),
+                    ),
                     text: 'متن',
                   ),
                   Tab(
-                    height: 46,
-                    iconMargin: EdgeInsets.only(bottom: 1),
-                    icon: Icon(Icons.bookmarks_outlined, size: 16),
+                    height: 68,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.bookmarks_outlined, size: 26)),
+                    ),
                     text: 'نشانک',
                   ),
                   Tab(
-                    height: 46,
-                    iconMargin: EdgeInsets.only(bottom: 1),
-                    icon: Icon(Icons.queue_music_rounded, size: 16),
+                    height: 68,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.queue_music_rounded, size: 26)),
+                    ),
                     text: 'پلی‌لیست',
+                  ),
+                  Tab(
+                    height: 68,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.library_music_outlined, size: 26)),
+                    ),
+                    text: 'کتابخانه',
                   ),
                 ],
               ),
-              IconButton(
-                tooltip: 'اسکن پوشه‌های کتابخانه',
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-                onPressed: _openFolderManager,
-                icon: const Icon(Icons.folder_open_rounded, size: 19),
+            ),
+            SizedBox(
+              width: 56,
+              height: 68,
+              child: IconButton(
+                tooltip: _currentTrack == null
+                    ? 'علاقه‌مندی‌ها (ابتدا یک فایل پخش کن)'
+                    : _currentTrackIsFavorite
+                        ? 'حذف از علاقه‌مندی‌ها'
+                        : 'افزودن به علاقه‌مندی‌ها',
+                onPressed: _toggleCurrentTrackFavorite,
+                padding: EdgeInsets.zero,
+                icon: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Center(
+                    child: Icon(
+                      _currentTrackIsFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      size: 26,
+                      color: _currentTrackIsFavorite
+                          ? colors.error
+                          : colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
               ),
-              IconButton(
-                tooltip: 'تهیه نسخه پشتیبان',
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-                onPressed: _createBackup,
-                icon: const Icon(Icons.save_alt_rounded, size: 19),
-              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayerToolbar(ColorScheme colors) {
+    return Material(
+      color: colors.surfaceContainerLow,
+      child: SafeArea(
+        top: true,
+        bottom: false,
+        child: SizedBox(
+          height: 48,
+          width: double.infinity,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
               PopupMenuButton<String>(
-                tooltip: 'بازیابی نسخه پشتیبان',
-                iconSize: 19,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                tooltip: 'پشتیبان‌گیری و بازیابی',
+                icon: const Icon(Icons.backup_outlined, size: 24),
                 onSelected: (value) {
+                  if (value == 'backup') _createBackup();
                   if (value == 'restore') _restoreBackup();
                 },
                 itemBuilder: (_) => const [
                   PopupMenuItem(
+                    value: 'backup',
+                    child: Row(
+                      children: [
+                        Icon(Icons.save_alt_rounded),
+                        SizedBox(width: 12),
+                        Text('تهیه نسخه پشتیبان'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
                     value: 'restore',
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.settings_backup_restore_rounded),
                         SizedBox(width: 12),
@@ -1157,11 +1166,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
+              IconButton(
+                tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
+                onPressed: widget.onToggleTheme,
+                icon: Icon(
+                  widget.isDark ? Icons.light_mode : Icons.dark_mode,
+                  size: 24,
+                ),
+              ),
               PopupMenuButton<String>(
-                tooltip: 'زمان‌بندی شروع و توقف',
-                iconSize: 19,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                tooltip: 'شروع و پایان خودکار',
+                icon: const Icon(Icons.schedule_rounded, size: 24),
                 onSelected: (value) {
                   if (value == 'start') _scheduleStartDialog();
                   if (value == 'stop') _scheduleStopDialog();
@@ -1176,18 +1191,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   PopupMenuItem(value: 'cancel_stop', child: Text('لغو توقف خودکار')),
                 ],
               ),
-              IconButton(
-                tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-                onPressed: widget.onToggleTheme,
-                icon: Icon(
-                  widget.isDark ? Icons.light_mode : Icons.dark_mode,
-                  size: 19,
-                ),
-              ),
-              const SizedBox(width: 2),
             ],
           ),
         ),
@@ -1196,121 +1199,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildLibraryTab(ColorScheme colors) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'کتابخانه من',
-                      style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${_tracks.length} فایل صوتی',
-                      style: TextStyle(color: colors.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: _pickAudio,
-                icon: const Icon(Icons.add),
-                label: const Text('افزودن فایل'),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: _tracks.isEmpty
-              ? _emptyLibrary(colors)
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                  itemCount: _tracks.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 7),
-                  itemBuilder: (context, index) {
-                    final track = _tracks[index];
-                    final selected = index == _currentIndex;
-                    final extension = track.path.split('.').last.toUpperCase();
-                    return Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 5,
-                        ),
-                        leading: CircleAvatar(
-                          backgroundColor: selected
-                              ? colors.primaryContainer
-                              : colors.surfaceContainerHighest,
-                          child: Icon(
-                            selected ? Icons.equalizer : Icons.music_note,
-                            color: selected
-                                ? colors.primary
-                                : colors.onSurfaceVariant,
-                          ),
-                        ),
-                        title: Text(
-                          track.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: selected ? FontWeight.bold : FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: Text(extension),
-                        onTap: () => _playTrack(index),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (value) {
-                            if (value == 'play') _playTrack(index);
-                            if (value == 'remove') _removeTrack(index);
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'play', child: Text('پخش')),
-                            PopupMenuItem(value: 'remove', child: Text('حذف از کتابخانه')),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _emptyLibrary(ColorScheme colors) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.audio_file_outlined, size: 68, color: colors.primary),
-            const SizedBox(height: 16),
-            const Text(
-              'هنوز فایلی اضافه نکرده‌ای',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'فایل‌های MP3، WAV، FLAC، AAC و M4A را از حافظه گوشی انتخاب کن.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.onSurfaceVariant),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _pickAudio,
-              icon: const Icon(Icons.add),
-              label: const Text('انتخاب فایل صوتی'),
-            ),
-          ],
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton.filledTonal(
+            tooltip: 'انتخاب فایل صوتی',
+            onPressed: _pickAudio,
+            icon: const Icon(Icons.audio_file_rounded, size: 28),
+            iconSize: 28,
+          ),
+          const SizedBox(width: 28),
+          IconButton.filledTonal(
+            tooltip: 'انتخاب پوشه',
+            onPressed: _openFolderManager,
+            icon: const Icon(Icons.create_new_folder_outlined, size: 28),
+            iconSize: 28,
+          ),
+        ],
       ),
     );
   }
@@ -1336,17 +1242,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.edit_note, size: 64, color: colors.primary),
+              Icon(Icons.edit_note, size: 44, color: colors.primary),
               const SizedBox(height: 12),
               const Text(
-                'برای نوشتن متن، ابتدا یک ویس انتخاب کن.',
+                'متن صدا ...',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'متن هر فایل جداگانه ذخیره می‌شود.',
-                style: TextStyle(color: colors.onSurfaceVariant),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -1385,7 +1286,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: SingleChildScrollView(
                   child: Text(
                     (_lyrics[track.path] ?? '').trim().isEmpty
-                        ? 'هنوز متنی برای این فایل ثبت نشده است. برای نوشتن متن، سه ثانیه روی این قسمت نگه دار.'
+                        ? 'متن صدا ...'
                         : _lyrics[track.path]!,
                     textDirection: TextDirection.rtl,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.8),
@@ -1397,12 +1298,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  'برای ویرایش، سه ثانیه روی متن نگه دار.',
-                  style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-                ),
-              ),
+              const Spacer(),
               TextButton.icon(
                 onPressed: () async {
                   await _store.saveLyrics(_lyrics);
