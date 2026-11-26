@@ -613,17 +613,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.bookmarks_outlined, size: 58, color: colors.primary),
+              Icon(Icons.bookmarks_outlined, size: 42, color: colors.primary),
               const SizedBox(height: 12),
               const Text(
                 'هنوز نشانکی ثبت نشده است.',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 6),
               Text(
                 'هنگام پخش فایل، دکمه ثبت نشانک کنار عنوان فایل را لمس کن.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: colors.onSurfaceVariant),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
               ),
             ],
           ),
@@ -646,16 +646,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: ListTile(
             leading: Icon(
               Icons.music_note_rounded,
+              size: 20,
               color: selected ? colors.primary : colors.onSurfaceVariant,
             ),
             title: Text(
               bookmark.audioTitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             ),
             subtitle: Text(
               '${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  ${_formatDateTime(bookmark.createdAt)}',
+              style: const TextStyle(fontSize: 11),
             ),
             onTap: trackIndex < 0 ? null : () => _jumpToBookmark(bookmark),
             trailing: Row(
@@ -815,7 +817,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('پلی‌لیست‌های من',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                             )),
                     const SizedBox(height: 3),
@@ -825,14 +828,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           : 'فایل فعلی: ${current.title}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: colors.onSurfaceVariant),
+                      style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
                     ),
                   ],
                 ),
               ),
               FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
                 onPressed: _createPlaylist,
-                icon: const Icon(Icons.add),
+                icon: const Icon(Icons.add, size: 18),
                 label: const Text('پلی‌لیست جدید'),
               ),
             ],
@@ -847,14 +855,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.queue_music_rounded,
-                            size: 60, color: colors.primary),
+                            size: 42, color: colors.primary),
                         const SizedBox(height: 12),
-                        const Text('هنوز پلی‌لیستی نساخته‌ای.'),
+                        const Text('هنوز پلی‌لیستی نساخته‌ای.',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 6),
                         Text(
                           'ابتدا پلی‌لیست بساز، سپس فایل در حال پخش را به آن اضافه کن.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: colors.onSurfaceVariant),
+                          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
                         ),
                       ],
                     ),
@@ -881,10 +890,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           _expandedPlaylistId = value ? playlist.id : null;
                         }),
                         leading: Icon(Icons.queue_music_rounded,
-                            color: colors.primary),
+                            size: 20, color: colors.primary),
                         title: Text(playlist.name,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Text('${tracks.length} فایل صوتی'),
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        subtitle: Text('${tracks.length} فایل صوتی',
+                            style: const TextStyle(fontSize: 11)),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -893,7 +903,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               onPressed: current == null
                                   ? null
                                   : () => _addCurrentTrackToPlaylist(playlist),
-                              icon: const Icon(Icons.playlist_add_rounded),
+                              icon: const Icon(Icons.playlist_add_rounded, size: 18),
                             ),
                             if (playlist.id != _favoritesPlaylistId)
                               PopupMenuButton<String>(
@@ -916,8 +926,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
                                 child: TextButton.icon(
+                                  style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    textStyle: const TextStyle(fontSize: 11),
+                                  ),
                                   onPressed: () => _addCurrentTrackToPlaylist(playlist),
-                                  icon: const Icon(Icons.playlist_add),
+                                  icon: const Icon(Icons.playlist_add, size: 17),
                                   label: const Text('افزودن فایل فعلی به این پلی‌لیست'),
                                 ),
                               ),
@@ -1153,12 +1167,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 controller: _tabController,
                 isScrollable: false,
                 labelStyle: const TextStyle(
-                  fontSize: 10,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                   height: 1.0,
                 ),
                 unselectedLabelStyle: const TextStyle(
-                  fontSize: 9,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
                   height: 1.0,
                 ),
@@ -1166,35 +1180,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 indicatorSize: TabBarIndicatorSize.label,
                 tabs: const [
                   Tab(
-                    height: 62,
+                    height: 68,
                     iconMargin: EdgeInsets.only(bottom: 3),
-                    icon: Icon(Icons.notes_rounded, size: 25),
+                    icon: Icon(Icons.notes_rounded, size: 30),
                     text: 'متن',
                   ),
                   Tab(
-                    height: 62,
+                    height: 68,
                     iconMargin: EdgeInsets.only(bottom: 3),
-                    icon: Icon(Icons.bookmarks_outlined, size: 25),
+                    icon: Icon(Icons.bookmarks_outlined, size: 30),
                     text: 'نشانک',
                   ),
                   Tab(
-                    height: 62,
+                    height: 68,
                     iconMargin: EdgeInsets.only(bottom: 3),
-                    icon: Icon(Icons.queue_music_rounded, size: 25),
+                    icon: Icon(Icons.queue_music_rounded, size: 30),
                     text: 'پلی‌لیست',
                   ),
                   Tab(
-                    height: 62,
+                    height: 68,
                     iconMargin: EdgeInsets.only(bottom: 3),
-                    icon: Icon(Icons.library_music_outlined, size: 25),
+                    icon: Icon(Icons.library_music_outlined, size: 30),
                     text: 'کتابخانه',
                   ),
                 ],
               ),
             ),
             SizedBox(
-              width: 52,
-              height: 62,
+              width: 56,
+              height: 68,
               child: IconButton(
                 tooltip: _currentTrack == null
                     ? 'علاقه‌مندی‌ها (ابتدا یک فایل پخش کن)'
@@ -1206,7 +1220,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   _currentTrackIsFavorite
                       ? Icons.favorite_rounded
                       : Icons.favorite_border_rounded,
-                  size: 25,
+                  size: 30,
                   color: _currentTrackIsFavorite ? colors.error : colors.onSurfaceVariant,
                 ),
               ),
