@@ -73,7 +73,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
-      _volumeAutomation.stop();
       setState(() {
         _currentIndex = index ?? -1;
         _lyricsEditing = false;
