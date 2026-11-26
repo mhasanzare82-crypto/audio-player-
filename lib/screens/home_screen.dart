@@ -1060,6 +1060,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             _buildBottomNavigation(colors),
+            _buildPlayerToolbar(colors),
             _buildPlayerPanel(colors),
           ],
         ),
@@ -1086,10 +1087,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   fontWeight: FontWeight.w600,
                   height: 1,
                 ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 8,
-                  height: 1,
-                ),
+                unselectedLabelStyle: const TextStyle(fontSize: 8, height: 1),
                 labelPadding: const EdgeInsets.symmetric(horizontal: 6),
                 indicatorSize: TabBarIndicatorSize.label,
                 tabs: const [
@@ -1127,23 +1125,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 onPressed: _openFolderManager,
                 icon: const Icon(Icons.folder_open_rounded, size: 19),
               ),
-              IconButton(
-                tooltip: 'تهیه نسخه پشتیبان',
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-                onPressed: _createBackup,
-                icon: const Icon(Icons.save_alt_rounded, size: 19),
-              ),
+              const SizedBox(width: 2),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayerToolbar(ColorScheme colors) {
+    return Material(
+      color: colors.surfaceContainerLow,
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: SizedBox(
+          height: 42,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
               PopupMenuButton<String>(
-                tooltip: 'بازیابی نسخه پشتیبان',
-                iconSize: 19,
+                tooltip: 'پشتیبان‌گیری و بازیابی',
+                icon: const Icon(Icons.backup_outlined),
+                iconSize: 20,
                 padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                constraints: const BoxConstraints.tightFor(width: 42, height: 38),
                 onSelected: (value) {
+                  if (value == 'backup') _createBackup();
                   if (value == 'restore') _restoreBackup();
                 },
                 itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'backup',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.save_alt_rounded),
+                        SizedBox(width: 12),
+                        Text('تهیه نسخه پشتیبان'),
+                      ],
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'restore',
                     child: Row(
@@ -1157,11 +1179,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
-              PopupMenuButton<String>(
-                tooltip: 'زمان‌بندی شروع و توقف',
-                iconSize: 19,
+              const SizedBox(width: 12),
+              IconButton(
+                tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
+                visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                constraints: const BoxConstraints.tightFor(width: 42, height: 38),
+                onPressed: widget.onToggleTheme,
+                icon: Icon(
+                  widget.isDark ? Icons.light_mode : Icons.dark_mode,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              PopupMenuButton<String>(
+                tooltip: 'شروع و پایان خودکار',
+                icon: const Icon(Icons.schedule_rounded),
+                iconSize: 20,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 42, height: 38),
                 onSelected: (value) {
                   if (value == 'start') _scheduleStartDialog();
                   if (value == 'stop') _scheduleStopDialog();
@@ -1176,18 +1212,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   PopupMenuItem(value: 'cancel_stop', child: Text('لغو توقف خودکار')),
                 ],
               ),
-              IconButton(
-                tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-                onPressed: widget.onToggleTheme,
-                icon: Icon(
-                  widget.isDark ? Icons.light_mode : Icons.dark_mode,
-                  size: 19,
-                ),
-              ),
-              const SizedBox(width: 2),
             ],
           ),
         ),
