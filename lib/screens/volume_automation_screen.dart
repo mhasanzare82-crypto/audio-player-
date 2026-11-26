@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../models/volume_automation_profile.dart';
@@ -39,7 +37,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
     final sorted = [...points]..sort((a, b) => a.timeMs.compareTo(b.timeMs));
     setState(() {
       _profile = _profile.copyWith(points: sorted);
-      _selectedPoint = _selectedPoint.clamp(0, sorted.length - 1);
+      _selectedPoint = _selectedPoint.clamp(0, sorted.length - 1).toInt();
     });
   }
 
@@ -96,7 +94,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
       final x = ((position.dx - plot.left) / plot.width).clamp(0.0, 1.0);
       final minimum = _profile.points[index - 1].timeMs + 100;
       final maximum = _profile.points[index + 1].timeMs - 100;
-      time = (x * _profile.durationMs).round().clamp(minimum, maximum);
+      time = (x * _profile.durationMs).round().clamp(minimum, maximum).toInt();
     }
     final volume = (1 - (position.dy - plot.top) / plot.height)
         .clamp(0.0, 1.0);
@@ -112,7 +110,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
       return;
     }
     final points = [..._profile.points]..removeAt(_selectedPoint);
-    _selectedPoint = (_selectedPoint - 1).clamp(0, points.length - 1);
+    _selectedPoint = (_selectedPoint - 1).clamp(0, points.length - 1).toInt();
     _setPoints(points);
   }
 
@@ -246,7 +244,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                       }
                     },
                     child: CustomPaint(
-                      size: Size.infinite,
+                      size: size,
                       painter: _VolumeCurvePainter(
                         profile: _profile,
                         selectedPoint: _selectedPoint,
