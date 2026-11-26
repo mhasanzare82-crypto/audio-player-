@@ -17,7 +17,7 @@ class VolumeAutomationPoint {
   factory VolumeAutomationPoint.fromMap(Map<String, dynamic> map) {
     return VolumeAutomationPoint(
       timeMs: (map['timeMs'] as num).round(),
-      volume: (map['volume'] as num).toDouble().clamp(0.0, 1.0),
+      volume: (map['volume'] as num).toDouble().clamp(0.0, 1.0).toDouble(),
     );
   }
 }
