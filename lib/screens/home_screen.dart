@@ -1198,26 +1198,117 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Future<void> _removeLibraryFolder(int index) async {
+    if (index < 0 || index >= _libraryFolders.length) return;
+    final removed = _libraryFolders[index];
+    setState(() => _libraryFolders.removeAt(index));
+    await _store.saveFolders(_libraryFolders);
+    _showMessage(
+      'پوشه «${removed['name'] ?? 'پوشه'}» از کتابخانه حذف شد؛ فایل‌های واردشده حفظ شدند.',
+    );
+  }
+
   Widget _buildLibraryTab(ColorScheme colors) {
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton.filledTonal(
-            tooltip: 'انتخاب فایل صوتی',
-            onPressed: _pickAudio,
-            icon: const Icon(Icons.audio_file_rounded, size: 28),
-            iconSize: 28,
+    final hasLibraryItems = _libraryFolders.isNotEmpty || _tracks.isNotEmpty;
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton.filledTonal(
+          tooltip: 'انتخاب فایل صوتی',
+          onPressed: _pickAudio,
+          icon: const Icon(Icons.audio_file_rounded, size: 28),
+          iconSize: 28,
+        ),
+        const SizedBox(width: 28),
+        IconButton.filledTonal(
+          tooltip: 'انتخاب پوشه',
+          onPressed: _openFolderManager,
+          icon: const Icon(Icons.create_new_folder_outlined, size: 28),
+          iconSize: 28,
+        ),
+      ],
+    );
+
+    if (!hasLibraryItems) {
+      return Center(child: actions);
+    }
+
+    final itemCount = _libraryFolders.length + _tracks.length;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: actions,
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            itemCount: itemCount,
+            separatorBuilder: (_, __) => Divider(
+              height: 1,
+              color: colors.outlineVariant.withValues(alpha: 0.55),
+            ),
+            itemBuilder: (context, index) {
+              if (index < _libraryFolders.length) {
+                final folder = _libraryFolders[index];
+                return ListTile(
+                  leading: Icon(
+                    Icons.folder_rounded,
+                    color: colors.primary,
+                  ),
+                  title: Text(
+                    folder['name'] ?? 'پوشه',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textDirection: TextDirection.rtl,
+                  ),
+                  subtitle: const Text('پوشه کتابخانه'),
+                  trailing: IconButton(
+                    tooltip: 'حذف پوشه از کتابخانه',
+                    onPressed: () => _removeLibraryFolder(index),
+                    icon: const Icon(Icons.delete_outline_rounded),
+                  ),
+                );
+              }
+
+              final trackIndex = index - _libraryFolders.length;
+              final track = _tracks[trackIndex];
+              final isCurrent = _currentIndex == trackIndex;
+              return ListTile(
+                leading: Icon(
+                  isCurrent
+                      ? Icons.graphic_eq_rounded
+                      : Icons.audio_file_rounded,
+                  color: isCurrent ? colors.primary : colors.onSurfaceVariant,
+                ),
+                title: Text(
+                  track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textDirection: TextDirection.rtl,
+                ),
+                subtitle: Text(isCurrent ? 'در حال پخش' : 'فایل صوتی'),
+                onTap: () => _playTrack(trackIndex),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'پخش فایل',
+                      onPressed: () => _playTrack(trackIndex),
+                      icon: const Icon(Icons.play_arrow_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'حذف فایل از کتابخانه',
+                      onPressed: () => _removeTrack(trackIndex),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-          const SizedBox(width: 28),
-          IconButton.filledTonal(
-            tooltip: 'انتخاب پوشه',
-            onPressed: _openFolderManager,
-            icon: const Icon(Icons.create_new_folder_outlined, size: 28),
-            iconSize: 28,
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
