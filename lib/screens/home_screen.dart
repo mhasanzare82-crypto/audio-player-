@@ -9,13 +9,17 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/audio_bookmark.dart';
 import '../models/audio_playlist.dart';
 import '../models/audio_track.dart';
+import '../models/volume_automation_profile.dart';
 import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 import '../services/scheduled_playback_service.dart';
+import '../services/volume_automation_controller.dart';
+import 'volume_automation_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -48,6 +52,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
   double _volume = 1;
+  late final VolumeAutomationController _volumeAutomation =
+      VolumeAutomationController(
+    onVolumeChanged: (factor) {
+      final effective = (_volume * factor).clamp(0.0, 1.0).toDouble();
+      unawaited(_player.setVolume(effective));
+    },
+  );
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
   bool _lyricsEditing = false;
@@ -102,8 +113,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _restoreLibrary() async {
     try {
       final savedVolume = await _store.loadVolume();
-      await _player.setVolume(savedVolume);
       if (mounted) setState(() => _volume = savedVolume);
+      await _applyEffectiveVolume();
       final saved = await _store.loadTracks();
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
@@ -402,11 +413,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _applyEffectiveVolume() async {
+    final effective = (_volume * _volumeAutomation.currentValue.value)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    await _player.setVolume(effective);
+  }
+
   Future<void> _setPlayerVolume(double value) async {
     final normalized = value.clamp(0.0, 1.0).toDouble();
     if (mounted) setState(() => _volume = normalized);
-    await _player.setVolume(normalized);
+    await _applyEffectiveVolume();
     await _store.saveVolume(normalized);
+  }
+
+  Future<void> _openVolumeAutomation() async {
+    final preferences = await SharedPreferences.getInstance();
+    final stored = preferences.getString('volume_automation_profile');
+    var profile = VolumeAutomationProfile.defaultProfile;
+    if (stored != null) {
+      try {
+        profile = VolumeAutomationProfile.fromJson(stored);
+      } catch (error) {
+        debugPrint('Saved volume automation profile is invalid: $error');
+      }
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => VolumeAutomationScreen(
+          initialProfile: profile,
+          controller: _volumeAutomation,
+          onSave: (nextProfile) async {
+            await preferences.setString(
+              'volume_automation_profile',
+              nextProfile.toJson(),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _showVolumeSettings() async {
@@ -1038,6 +1084,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _lyricsHoldTimer?.cancel();
     _tabController.dispose();
+    _volumeAutomation.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -1156,6 +1203,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ],
+              ),
+              IconButton(
+                tooltip: 'نقشه تغییرات صدا',
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                onPressed: _openVolumeAutomation,
+                icon: const Icon(Icons.multiline_chart_rounded, size: 19),
               ),
               PopupMenuButton<String>(
                 tooltip: 'زمان‌بندی شروع و توقف',
