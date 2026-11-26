@@ -457,6 +457,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       MaterialPageRoute<void>(
         builder: (_) => VolumeAutomationScreen(
           initialProfile: profile,
+          hasSavedProfile: stored != null,
           controller: _volumeAutomation,
           onSave: (nextProfile) async {
             await preferences.setString(
