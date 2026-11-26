@@ -1122,27 +1122,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 onPressed: _openFolderManager,
                 icon: const Icon(Icons.folder_open_rounded, size: 19),
               ),
+              IconButton(
+                tooltip: 'تهیه نسخه پشتیبان',
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                onPressed: _createBackup,
+                icon: const Icon(Icons.save_alt_rounded, size: 19),
+              ),
               PopupMenuButton<String>(
-                tooltip: 'پشتیبان‌گیری و بازیابی',
+                tooltip: 'بازیابی نسخه پشتیبان',
                 iconSize: 19,
                 padding: const EdgeInsets.all(4),
                 constraints: const BoxConstraints.tightFor(width: 34, height: 34),
                 onSelected: (value) {
-                  if (value == 'backup') _createBackup();
                   if (value == 'restore') _restoreBackup();
                 },
                 itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'backup',
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.save_alt_rounded),
-                        SizedBox(width: 12),
-                        Text('تهیه نسخه پشتیبان'),
-                      ],
-                    ),
-                  ),
                   PopupMenuItem(
                     value: 'restore',
                     child: Row(
