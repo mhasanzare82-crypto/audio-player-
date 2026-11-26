@@ -1169,7 +1169,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildPlayerToolbar(ColorScheme colors) {
     return Material(
-      color: colors.surfaceContainerLow,
+      color: colors.surfaceContainerHighest,
       child: SafeArea(
         top: true,
         bottom: false,
@@ -1564,12 +1564,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     tooltip: 'پخش تصادفی',
                     onPressed: track == null ? null : _toggleShuffle,
                     color: _shuffle ? colors.primary : colors.onSurfaceVariant,
-                    icon: const Icon(Icons.shuffle),
+                    icon: const Icon(Icons.shuffle, size: 27),
                   ),
                   IconButton(
                     tooltip: '۱۵ ثانیه عقب',
                     onPressed: track == null ? null : () => _seekRelative(-15),
-                    icon: const Icon(Icons.replay_10),
+                    icon: const Icon(Icons.replay_10, size: 27),
                   ),
                   IconButton(
                     tooltip: 'قبلی',
@@ -1582,7 +1582,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               await _player.seekToPrevious();
                             }
                           },
-                    icon: const Icon(Icons.skip_previous_rounded, size: 30),
+                    icon: const Icon(Icons.skip_previous_rounded, size: 32),
                   ),
                   StreamBuilder<PlayerState>(
                     stream: _player.playerStateStream,
@@ -1592,8 +1592,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       final busy = processing == ProcessingState.loading ||
                           processing == ProcessingState.buffering;
                       return SizedBox(
-                        width: 54,
-                        height: 54,
+                        width: 60,
+                        height: 60,
                         child: FilledButton(
                           style: FilledButton.styleFrom(
                             shape: const CircleBorder(),
@@ -1604,13 +1604,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               : () => playing ? _player.pause() : _player.play(),
                           child: busy
                               ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
+                                  width: 24,
+                                  height: 24,
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : Icon(
                                   playing ? Icons.pause : Icons.play_arrow,
-                                  size: 30,
+                                  size: 34,
                                 ),
                         ),
                       );
@@ -1619,12 +1619,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   IconButton(
                     tooltip: 'بعدی',
                     onPressed: track == null ? null : _player.seekToNext,
-                    icon: const Icon(Icons.skip_next_rounded, size: 30),
+                    icon: const Icon(Icons.skip_next_rounded, size: 32),
                   ),
                   IconButton(
                     tooltip: '۱۵ ثانیه جلو',
                     onPressed: track == null ? null : () => _seekRelative(15),
-                    icon: const Icon(Icons.forward_10),
+                    icon: const Icon(Icons.forward_10, size: 27),
                   ),
                   IconButton(
                     tooltip: 'حالت تکرار',
@@ -1636,6 +1636,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       _loopMode == LoopMode.one
                           ? Icons.repeat_one
                           : Icons.repeat,
+                      size: 27,
                     ),
                   ),
                 ],
