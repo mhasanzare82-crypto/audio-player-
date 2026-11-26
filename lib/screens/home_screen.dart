@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final LibraryStore _store = LibraryStore();
   final FolderLibraryService _folderService = FolderLibraryService();
   final List<AudioTrack> _tracks = [];
+  final List<Map<String, String>> _libraryFolders = [];
   Map<String, String> _lyrics = {};
   int _currentIndex = -1;
   bool _loading = true;
@@ -63,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 4, initialIndex: 3, vsync: this);
     _configureAudioSession();
     ScheduledPlaybackService.setStopHandler(() async {
       await _player.stop();
@@ -105,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       await _player.setVolume(savedVolume);
       if (mounted) setState(() => _volume = savedVolume);
       final saved = await _store.loadTracks();
+      final savedFolders = await _store.loadFolders();
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
       final savedPlaylists = await _store.loadPlaylists();
@@ -115,6 +117,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (!mounted) return;
       setState(() {
         _tracks.addAll(available);
+        _libraryFolders
+          ..clear()
+          ..addAll(savedFolders);
         _lyrics = lyrics;
         _playlists
           ..clear()
@@ -370,6 +375,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _scanSelectedFolders(List<Map<String, String>> folders) async {
     try {
       await _store.saveFolders(folders);
+      if (mounted) {
+        setState(() {
+          _libraryFolders
+            ..clear()
+            ..addAll(folders.map((folder) => Map<String, String>.from(folder)));
+        });
+      }
       _showMessage('در حال اسکن پوشه‌ها...');
       final found = await _folderService.scanFolders(
         folders.map((folder) => folder['uri']!).toList(),
@@ -1048,19 +1060,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Scaffold(
         body: Column(
           children: [
+            _buildPlayerToolbar(colors),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildLibraryTab(colors),
                   _buildLyricsTab(colors),
                   _buildBookmarksTab(colors),
                   _buildPlaylistsTab(colors),
+                  _buildLibraryTab(colors),
                 ],
               ),
             ),
             _buildBottomNavigation(colors),
-            _buildPlayerToolbar(colors),
             _buildPlayerPanel(colors),
           ],
         ),
@@ -1073,61 +1085,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: SafeArea(
         top: false,
         bottom: false,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TabBar(
-                controller: _tabController,
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                labelStyle: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  height: 1,
-                ),
-                unselectedLabelStyle: const TextStyle(fontSize: 8, height: 1),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-                indicatorSize: TabBarIndicatorSize.label,
-                tabs: const [
-                  Tab(
-                    height: 46,
-                    iconMargin: EdgeInsets.only(bottom: 1),
-                    icon: Icon(Icons.library_music_outlined, size: 16),
-                    text: 'کتابخانه',
-                  ),
-                  Tab(
-                    height: 46,
-                    iconMargin: EdgeInsets.only(bottom: 1),
-                    icon: Icon(Icons.notes_rounded, size: 16),
-                    text: 'متن',
-                  ),
-                  Tab(
-                    height: 46,
-                    iconMargin: EdgeInsets.only(bottom: 1),
-                    icon: Icon(Icons.bookmarks_outlined, size: 16),
-                    text: 'نشانک',
-                  ),
-                  Tab(
-                    height: 46,
-                    iconMargin: EdgeInsets.only(bottom: 1),
-                    icon: Icon(Icons.queue_music_rounded, size: 16),
-                    text: 'پلی‌لیست',
-                  ),
-                ],
-              ),
-              IconButton(
-                tooltip: 'اسکن پوشه‌های کتابخانه',
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-                onPressed: _openFolderManager,
-                icon: const Icon(Icons.folder_open_rounded, size: 19),
-              ),
-              const SizedBox(width: 2),
-            ],
+        child: TabBar(
+          controller: _tabController,
+          isScrollable: false,
+          labelStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            height: 1.1,
           ),
+          unselectedLabelStyle: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+          labelPadding: EdgeInsets.zero,
+          indicatorSize: TabBarIndicatorSize.label,
+          tabs: const [
+            Tab(
+              height: 62,
+              iconMargin: EdgeInsets.only(bottom: 3),
+              icon: Icon(Icons.notes_rounded, size: 25),
+              text: 'متن',
+            ),
+            Tab(
+              height: 62,
+              iconMargin: EdgeInsets.only(bottom: 3),
+              icon: Icon(Icons.bookmarks_outlined, size: 25),
+              text: 'نشانک',
+            ),
+            Tab(
+              height: 62,
+              iconMargin: EdgeInsets.only(bottom: 3),
+              icon: Icon(Icons.queue_music_rounded, size: 25),
+              text: 'پلی‌لیست',
+            ),
+            Tab(
+              height: 62,
+              iconMargin: EdgeInsets.only(bottom: 3),
+              icon: Icon(Icons.library_music_outlined, size: 25),
+              text: 'کتابخانه',
+            ),
+          ],
         ),
       ),
     );
@@ -1140,16 +1137,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         top: false,
         bottom: false,
         child: SizedBox(
-          height: 42,
+          height: 48,
+          width: double.infinity,
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               PopupMenuButton<String>(
                 tooltip: 'پشتیبان‌گیری و بازیابی',
-                icon: const Icon(Icons.backup_outlined),
-                iconSize: 20,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 42, height: 38),
+                icon: const Icon(Icons.backup_outlined, size: 24),
                 onSelected: (value) {
                   if (value == 'backup') _createBackup();
                   if (value == 'restore') _restoreBackup();
@@ -1158,7 +1153,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   PopupMenuItem(
                     value: 'backup',
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.save_alt_rounded),
                         SizedBox(width: 12),
@@ -1169,7 +1163,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   PopupMenuItem(
                     value: 'restore',
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.settings_backup_restore_rounded),
                         SizedBox(width: 12),
@@ -1179,25 +1172,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
-              const SizedBox(width: 12),
               IconButton(
                 tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 42, height: 38),
                 onPressed: widget.onToggleTheme,
                 icon: Icon(
                   widget.isDark ? Icons.light_mode : Icons.dark_mode,
-                  size: 20,
+                  size: 24,
                 ),
               ),
-              const SizedBox(width: 12),
               PopupMenuButton<String>(
                 tooltip: 'شروع و پایان خودکار',
-                icon: const Icon(Icons.schedule_rounded),
-                iconSize: 20,
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints.tightFor(width: 42, height: 38),
+                icon: const Icon(Icons.schedule_rounded, size: 24),
                 onSelected: (value) {
                   if (value == 'start') _scheduleStartDialog();
                   if (value == 'stop') _scheduleStopDialog();
@@ -1224,30 +1209,60 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'کتابخانه من',
-                      style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'کتابخانه من',
+                          style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_tracks.length} فایل صوتی • ${_libraryFolders.length} پوشه',
+                          style: TextStyle(color: colors.onSurfaceVariant),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${_tracks.length} فایل صوتی',
-                      style: TextStyle(color: colors.onSurfaceVariant),
-                    ),
-                  ],
+                  ),
+                  FilledButton.icon(
+                    onPressed: _pickAudio,
+                    icon: const Icon(Icons.audio_file_rounded),
+                    label: const Text('افزودن فایل'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: OutlinedButton.icon(
+                  onPressed: _openFolderManager,
+                  icon: const Icon(Icons.create_new_folder_outlined),
+                  label: const Text('افزودن پوشه کتابخانه'),
                 ),
               ),
-              FilledButton.icon(
-                onPressed: _pickAudio,
-                icon: const Icon(Icons.add),
-                label: const Text('افزودن فایل'),
-              ),
+              if (_libraryFolders.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: _libraryFolders.map((folder) => Chip(
+                    avatar: const Icon(Icons.folder_outlined, size: 17),
+                    label: Text(
+                      folder['name'] ?? 'پوشه',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  )).toList(),
+                ),
+              ],
             ],
           ),
         ),
