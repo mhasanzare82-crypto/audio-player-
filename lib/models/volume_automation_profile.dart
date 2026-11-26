@@ -38,6 +38,14 @@ class VolumeAutomationProfile {
         this.points.last.timeMs != durationMs) {
       throw ArgumentError('A curve must have fixed start and end points.');
     }
+    for (var i = 0; i < this.points.length; i++) {
+      final point = this.points[i];
+      if (point.timeMs < 0 || point.timeMs > durationMs ||
+          point.volume < 0 || point.volume > 1 ||
+          (i > 0 && point.timeMs <= this.points[i - 1].timeMs)) {
+        throw ArgumentError('Curve points must be ordered and inside the graph.');
+      }
+    }
   }
 
   final int durationMs;
