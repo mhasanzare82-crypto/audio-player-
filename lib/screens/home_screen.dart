@@ -444,6 +444,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _openVolumeAutomation() async {
     final preferences = await SharedPreferences.getInstance();
     final stored = preferences.getString('volume_automation_profile');
+    final storedPatterns = preferences.getString('volume_automation_patterns_v1');
+    final trackPath = _currentTrack?.path ?? 'no-current-track';
+    final sequenceKey =
+        'volume_automation_sequence_${base64Url.encode(utf8.encode(trackPath))}';
+    final storedSequence = preferences.getString(sequenceKey);
+
     var profile = VolumeAutomationProfile.defaultProfile;
     if (stored != null) {
       try {
@@ -452,17 +458,56 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         debugPrint('Saved volume automation profile is invalid: $error');
       }
     }
+
+    var patterns = <VolumeAutomationPattern>[];
+    if (storedPatterns != null) {
+      try {
+        patterns = (jsonDecode(storedPatterns) as List<dynamic>)
+            .map((item) => VolumeAutomationPattern.fromMap(
+                  Map<String, dynamic>.from(item as Map),
+                ))
+            .toList();
+      } catch (error) {
+        debugPrint('Saved volume automation patterns are invalid: $error');
+      }
+    }
+    var sequence = <VolumeAutomationSequenceItem>[];
+    if (storedSequence != null) {
+      try {
+        sequence = (jsonDecode(storedSequence) as List<dynamic>)
+            .map((item) => VolumeAutomationSequenceItem.fromMap(
+                  Map<String, dynamic>.from(item as Map),
+                ))
+            .toList();
+      } catch (error) {
+        debugPrint('Saved volume automation sequence is invalid: $error');
+      }
+    }
+    if (patterns.isNotEmpty) profile = patterns.first.profile;
     if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => VolumeAutomationScreen(
           initialProfile: profile,
-          hasSavedProfile: stored != null,
+          hasSavedProfile: patterns.isNotEmpty || stored != null,
+          patterns: patterns,
+          sequence: sequence,
+          audioDurationMs: _player.duration?.inMilliseconds ?? 0,
           controller: _volumeAutomation,
           onSave: (nextProfile) async {
             await preferences.setString(
               'volume_automation_profile',
               nextProfile.toJson(),
+            );
+          },
+          onSaveLibrary: (nextPatterns, nextSequence) async {
+            await preferences.setString(
+              'volume_automation_patterns_v1',
+              jsonEncode(nextPatterns.map((item) => item.toMap()).toList()),
+            );
+            await preferences.setString(
+              sequenceKey,
+              jsonEncode(nextSequence.map((item) => item.toMap()).toList()),
             );
           },
         ),
