@@ -887,19 +887,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   : () => _addCurrentTrackToPlaylist(playlist),
                               icon: const Icon(Icons.playlist_add_rounded),
                             ),
-                            PopupMenuButton<String>(
-                              onSelected: (value) {
-                                if (value == 'delete') _deletePlaylist(playlist);
-                              },
-                              itemBuilder: (_) => playlist.id == _favoritesPlaylistId
-                                  ? const <PopupMenuEntry<String>>[]
-                                  : const [
-                                      PopupMenuItem(
-                                        value: 'delete',
-                                        child: Text('حذف پلی‌لیست'),
-                                      ),
-                                    ],
-                            ),
+                            if (playlist.id != _favoritesPlaylistId)
+                              PopupMenuButton<String>(
+                                onSelected: (value) {
+                                  if (value == 'delete') _deletePlaylist(playlist);
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: Text('حذف پلی‌لیست'),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                         children: [
