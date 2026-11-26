@@ -146,13 +146,10 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
 
   void _clearDrawing() {
     if (_isRunning) return;
-    _setPoints(const [
-      VolumeAutomationPoint(timeMs: 0, volume: 1),
-      VolumeAutomationPoint(timeMs: 30000, volume: 1),
-    ].map((point) => VolumeAutomationPoint(
-          timeMs: point.timeMs == 30000 ? _profile.durationMs : point.timeMs,
-          volume: point.volume,
-        )).toList());
+    _setPoints([
+      const VolumeAutomationPoint(timeMs: 0, volume: 1),
+      VolumeAutomationPoint(timeMs: _profile.durationMs, volume: 1),
+    ]);
   }
 
   void _changeDuration() {
@@ -279,7 +276,7 @@ class _VolumeAutomationScreenState extends State<VolumeAutomationScreen> {
                       painter: _VolumeCurvePainter(
                         profile: _profile,
                         selectedPoint: -1,
-                        drawingOffsets: _drawingOffsets,
+                        drawingOffsets: List<Offset>.of(_drawingOffsets),
                         gridColor: colors.outlineVariant,
                         curveColor: colors.primary,
                         pointColor: colors.primary,
