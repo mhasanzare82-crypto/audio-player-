@@ -126,15 +126,7 @@ class VolumeAutomationController {
       cursor = segmentEnd;
     }
 
-    _emit(_patterns[_sequence.last.patternId]!.profile.valueAt(
-      _patterns[_sequence.last.patternId]!.profile.durationMs,
-    ));
-    isRunning.value = false;
-    _sequence = const [];
-    _patterns = const {};
-    _audioDurationMs = null;
-    _wasPlaying = false;
-    _lastPositionMs = null;
+    stop();
   }
 
   void stop({bool restoreBaseVolume = true}) {
