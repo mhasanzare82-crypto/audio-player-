@@ -18,7 +18,7 @@ class VolumeRange {
   factory VolumeRange.fromMap(Map<String, dynamic> map) => VolumeRange(
         startMs: (map['startMs'] as num).toInt(),
         endMs: (map['endMs'] as num).toInt(),
-        percent: (map['percent'] as num).toInt().clamp(0, 100),
+        percent: (map['percent'] as num).toInt().clamp(0, 100).toInt(),
       );
 }
 
