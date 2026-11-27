@@ -68,6 +68,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _themePickerOpened = false;
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
+  int? _pendingTopicStartMs;
+  String? _pendingTopicAudioPath;
   final List<AudioPlaylist> _playlists = [];
   String _smartTopicMode = 'manual';
   String _smartOrderMode = 'sequential';
@@ -626,6 +628,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (index < 0 || index >= _tracks.length) return;
     final removed = _tracks.removeAt(index);
     _bookmarks.removeWhere((bookmark) => bookmark.audioPath == removed.path);
+    if (_pendingTopicAudioPath == removed.path) {
+      _pendingTopicStartMs = null;
+      _pendingTopicAudioPath = null;
+    }
     for (var i = 0; i < _playlists.length; i++) {
       final playlist = _playlists[i];
       _playlists[i] = playlist.copyWith(
@@ -694,8 +700,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _toggleTopicRangeBookmark() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را برای ثبت موضوع انتخاب کن.');
+      return;
+    }
+
+    final startMs = _pendingTopicStartMs;
+    if (startMs == null) {
+      final positionMs = _player.position.inMilliseconds;
+      setState(() {
+        _pendingTopicStartMs = positionMs;
+        _pendingTopicAudioPath = track.path;
+      });
+      _showMessage('شروع موضوع در ${_formatDuration(Duration(milliseconds: positionMs))} ثبت شد؛ برای ثبت پایان، دوباره همین دکمه را بزن.');
+      return;
+    }
+
+    if (_pendingTopicAudioPath != track.path) {
+      _showMessage('برای ثبت پایان، ابتدا به همان فایل صوتی که شروع موضوع را در آن ثبت کردی برگرد.');
+      return;
+    }
+
+    final endMs = _player.position.inMilliseconds;
+    if (endMs <= startMs) {
+      _showMessage('زمان پایان باید بعد از زمان شروع باشد. نشانگر شروع حفظ شد؛ کمی جلوتر برو و دوباره بزن.');
+      return;
+    }
+
+    final details = await _showBookmarkDetailsDialog(initialTitle: track.title);
+    if (details == null) return;
+    if (details['topic']!.isEmpty) {
+      _showMessage('برای نشانک موضوعی، نام موضوع را وارد کن.');
+      return;
+    }
+
+    final now = DateTime.now();
+    final bookmark = AudioBookmark(
+      id: now.microsecondsSinceEpoch.toString(),
+      audioPath: track.path,
+      audioTitle: track.title,
+      positionMs: startMs,
+      endPositionMs: endMs,
+      isTopicRange: true,
+      createdAt: now,
+      title: details['title']!.isEmpty ? track.title : details['title']!,
+      topic: details['topic']!,
+    );
+    final updatedBookmarks = [..._bookmarks, bookmark]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    try {
+      await _store.saveBookmarks(updatedBookmarks);
+      if (!mounted) return;
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(updatedBookmarks);
+        _selectedSmartTopic ??= bookmark.topic;
+        _pendingTopicStartMs = null;
+        _pendingTopicAudioPath = null;
+      });
+      await _saveSmartSettings();
+      _showMessage('بازه موضوع «${bookmark.topic}» از ${_formatDuration(Duration(milliseconds: startMs))} تا ${_formatDuration(Duration(milliseconds: endMs))} ذخیره شد.');
+    } catch (error) {
+      _showMessage('ذخیره بازه موضوع ناموفق بود: $error');
+    }
+  }
+
   List<String> get _availableSmartTopics {
     final topics = _bookmarks
+        .where((bookmark) => bookmark.isTopicRange &&
+            bookmark.endPositionMs != null &&
+            bookmark.endPositionMs! > bookmark.positionMs)
         .map((bookmark) => bookmark.topic.trim())
         .where((topic) => topic.isNotEmpty)
         .toSet()
@@ -772,6 +850,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 audioPath: item.audioPath,
                 audioTitle: item.audioTitle,
                 positionMs: item.positionMs,
+                endPositionMs: item.endPositionMs,
+                isTopicRange: item.isTopicRange,
                 createdAt: item.createdAt,
                 title: details['title']!,
                 topic: details['topic']!,
@@ -844,6 +924,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     final matching = _bookmarks
         .where((bookmark) =>
+            bookmark.isTopicRange &&
+            bookmark.endPositionMs != null &&
+            bookmark.endPositionMs! > bookmark.positionMs &&
             bookmark.topic.trim() == topic &&
             _tracks.any((track) => track.path == bookmark.audioPath))
         .toList();
@@ -860,13 +943,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     final sources = <AudioSource>[];
     for (final bookmark in matching) {
-      final nextPosition = _bookmarks
-          .where((candidate) =>
-              candidate.audioPath == bookmark.audioPath &&
-              candidate.positionMs > bookmark.positionMs)
-          .map((candidate) => candidate.positionMs)
-          .fold<int?>(null, (nearest, value) =>
-              nearest == null || value < nearest ? value : nearest);
       final parsed = Uri.parse(bookmark.audioPath);
       final uri = parsed.scheme == 'content'
           ? parsed
@@ -875,7 +951,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ClippingAudioSource(
           child: AudioSource.uri(uri),
           start: Duration(milliseconds: bookmark.positionMs),
-          end: nextPosition == null ? null : Duration(milliseconds: nextPosition),
+          end: Duration(milliseconds: bookmark.endPositionMs!),
         ),
       );
     }
@@ -989,7 +1065,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         return Card(
           clipBehavior: Clip.antiAlias,
           child: ListTile(
-            leading: Icon(Icons.bookmark_rounded, color: colors.primary),
+            leading: Icon(
+              bookmark.isTopicRange
+                  ? Icons.bookmark_added_rounded
+                  : Icons.bookmark_rounded,
+              color: colors.primary,
+            ),
             title: Text(
               bookmark.title.isEmpty ? bookmark.audioTitle : bookmark.title,
               maxLines: 1,
@@ -999,7 +1080,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
             ),
             subtitle: Text(
-              '${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  $dateLabel',
+              '${bookmark.isTopicRange ? 'موضوع' : 'نشانک معمولی'}  •  ${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}${bookmark.isTopicRange && bookmark.endPositionMs != null ? ' تا ${_formatDuration(Duration(milliseconds: bookmark.endPositionMs!))}' : ''}  •  $dateLabel',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
@@ -1532,7 +1613,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 6),
         Text(
-          'موضوع را انتخاب کن تا نشانک‌های هم‌موضوع از فایل‌های صوتی مختلف پیدا و پخش شوند.',
+          'فقط بازه‌های موضوعی که با دکمه شروع و پایان ثبت شده‌اند، برای انتخاب و پخش استفاده می‌شوند.',
           style: TextStyle(color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
@@ -1588,7 +1669,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.shuffle_rounded),
             title: const Text('موضوع در هر شروع به‌صورت تصادفی انتخاب می‌شود.'),
-            subtitle: Text('${topics.length} موضوع دارای نشانک'),
+            subtitle: Text('${topics.length} موضوع دارای نشانک موضوعی'),
           ),
         ],
         const SizedBox(height: 20),
@@ -1623,7 +1704,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const ListTile(
             leading: Icon(Icons.info_outline_rounded),
             title: Text('هنوز موضوعی ثبت نشده است.'),
-            subtitle: Text('از تب نشانک‌ها، برای نشانک‌ها عنوان و موضوع تعیین کن.'),
+            subtitle: Text('در نوار پخش، با دکمه نشانک موضوعی ابتدا و انتهای هر موضوع را ثبت کن.'),
           ),
         if (_activeSmartTopic != null)
           ListTile(
@@ -2120,75 +2201,115 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: _MarqueeText(
-                      text: track?.title ?? 'فایلی برای پخش انتخاب نشده',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colors.outlineVariant),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.graphic_eq_rounded, color: colors.primary, size: 21),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: _MarqueeText(
+                            text: track?.title ?? 'فایلی برای پخش انتخاب نشده',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'در حال پخش',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: colors.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'ثبت نشانک در زمان فعلی',
-                    onPressed: track == null ? null : _addBookmark,
-                    icon: const Icon(Icons.bookmark_add_outlined),
-                  ),
-                  IconButton(
-                    tooltip: _currentTrack == null
-                        ? 'علاقه‌مندی‌ها (ابتدا یک فایل پخش کن)'
-                        : _currentTrackIsFavorite
-                            ? 'حذف از علاقه‌مندی‌ها'
-                            : 'افزودن به علاقه‌مندی‌ها',
-                    onPressed: _toggleCurrentTrackFavorite,
-                    icon: Icon(
-                      _currentTrackIsFavorite
-                          ? Icons.favorite_rounded
-                          : Icons.favorite_border_rounded,
-                      color: _currentTrackIsFavorite
-                          ? colors.error
-                          : colors.onSurfaceVariant,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'شروع پخش هوشمند',
-                    onPressed: _toggleSmartPlayback,
-                    icon: const Icon(Icons.auto_awesome_rounded),
-                  ),
-                  IconButton(
-                    tooltip: 'تنظیم صدای پلیر',
-                    onPressed: _showVolumeSettings,
-                    icon: Icon(
-                      _volume == 0
-                          ? Icons.volume_off_rounded
-                          : _volume < 0.5
-                              ? Icons.volume_down_rounded
-                              : Icons.volume_up_rounded,
-                      color: colors.primary,
-                    ),
-                  ),
-                  PopupMenuButton<double>(
-                    tooltip: 'سرعت پخش',
-                    initialValue: _speed,
-                    onSelected: (value) async {
-                      setState(() => _speed = value);
-                      await _player.setSpeed(value);
-                    },
-                    itemBuilder: (_) => <double>[
-                      0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
-                    ].map((value) => PopupMenuItem<double>(
-                          value: value,
-                          child: Text('${value}x'),
-                        )).toList(),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Text(
-                        '${_speed}x',
-                        style: TextStyle(
-                          color: colors.primary,
-                          fontWeight: FontWeight.bold,
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'ثبت نشانک در زمان فعلی',
+                        onPressed: track == null ? null : _addBookmark,
+                        icon: const Icon(Icons.bookmark_add_outlined),
+                      ),
+                      IconButton(
+                        tooltip: _pendingTopicStartMs == null
+                            ? 'ثبت شروع موضوع'
+                            : 'ثبت پایان موضوع (${_formatDuration(Duration(milliseconds: _pendingTopicStartMs!))})',
+                        onPressed: track == null ? null : _toggleTopicRangeBookmark,
+                        color: _pendingTopicStartMs == null ? null : colors.primary,
+                        icon: Icon(
+                          _pendingTopicStartMs == null
+                              ? Icons.bookmark_add_rounded
+                              : Icons.bookmark_added_rounded,
                         ),
                       ),
-                    ),
+                      IconButton(
+                        tooltip: _currentTrack == null
+                            ? 'علاقه‌مندی‌ها (ابتدا یک فایل پخش کن)'
+                            : _currentTrackIsFavorite
+                                ? 'حذف از علاقه‌مندی‌ها'
+                                : 'افزودن به علاقه‌مندی‌ها',
+                        onPressed: _toggleCurrentTrackFavorite,
+                        icon: Icon(
+                          _currentTrackIsFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: _currentTrackIsFavorite
+                              ? colors.error
+                              : colors.onSurfaceVariant,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'شروع پخش هوشمند',
+                        onPressed: _toggleSmartPlayback,
+                        icon: const Icon(Icons.auto_awesome_rounded),
+                      ),
+                      IconButton(
+                        tooltip: 'تنظیم صدای پلیر',
+                        onPressed: _showVolumeSettings,
+                        icon: Icon(
+                          _volume == 0
+                              ? Icons.volume_off_rounded
+                              : _volume < 0.5
+                                  ? Icons.volume_down_rounded
+                                  : Icons.volume_up_rounded,
+                          color: colors.primary,
+                        ),
+                      ),
+                      PopupMenuButton<double>(
+                        tooltip: 'سرعت پخش',
+                        initialValue: _speed,
+                        onSelected: (value) async {
+                          setState(() => _speed = value);
+                          await _player.setSpeed(value);
+                        },
+                        itemBuilder: (_) => <double>[
+                          0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
+                        ].map((value) => PopupMenuItem<double>(
+                              value: value,
+                              child: Text('${value}x'),
+                            )).toList(),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Text(
+                            '${_speed}x',
+                            style: TextStyle(
+                              color: colors.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
