@@ -1634,6 +1634,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: DropdownButtonFormField<String>(
                 value: _smartTopicMode,
                 isExpanded: true,
+                itemHeight: 38,
                 style: const TextStyle(fontSize: 12),
                 decoration: const InputDecoration(
                   labelText: 'انتخاب موضوع',
@@ -1645,7 +1646,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 items: const [
                   DropdownMenuItem(
                     value: 'manual',
-                    height: 38,
                     child: Text('انتخاب موضوع توسط من', style: TextStyle(fontSize: 12)),
                   ),
                   DropdownMenuItem(
@@ -1694,6 +1694,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: DropdownButtonFormField<String>(
                 value: _smartOrderMode,
                 isExpanded: true,
+                itemHeight: 38,
                 style: const TextStyle(fontSize: 12),
                 decoration: const InputDecoration(
                   labelText: 'ترتیب پخش نشانک‌ها',
@@ -2158,16 +2159,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
       ),
-    );
-  }
-
-  Future<void> _removeLibraryFolder(int index) async {
-    if (index < 0 || index >= _libraryFolders.length) return;
-    final removed = _libraryFolders[index];
-    setState(() => _libraryFolders.removeAt(index));
-    await _store.saveFolders(_libraryFolders);
-    _showMessage(
-      'پوشه «${removed['name'] ?? 'پوشه'}» از کتابخانه حذف شد؛ فایل‌های واردشده حفظ شدند.',
     );
   }
 
