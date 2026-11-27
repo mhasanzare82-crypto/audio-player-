@@ -106,10 +106,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _restoreLibrary();
     _player.currentIndexStream.listen((index) {
       if (!mounted) return;
+      final nextIndex = index ?? -1;
+      final pendingPath = _pendingTopicAudioPath;
+      final pendingWasCanceled = _pendingTopicStartMs != null &&
+          (nextIndex < 0 ||
+              nextIndex >= _tracks.length ||
+              _tracks[nextIndex].path != pendingPath);
+      if (pendingWasCanceled) {
+        _pendingTopicStartMs = null;
+        _pendingTopicAudioPath = null;
+      }
       setState(() {
-        _currentIndex = index ?? -1;
+        _currentIndex = nextIndex;
         _lyricsEditing = false;
       });
+      if (pendingWasCanceled) {
+        _showMessage('با تغییر فایل صوتی، شروعِ ثبت‌نشدهٔ موضوع لغو شد؛ می‌توانی بازهٔ جدیدی ثبت کنی.');
+      }
       _lastAppliedVolume = null;
       unawaited(_applyEffectiveVolume(position: Duration.zero));
     });
