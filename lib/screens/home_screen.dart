@@ -629,7 +629,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _addBookmark() async {
     final track = _currentTrack;
-    if (track == null) return;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را برای پخش انتخاب کن.');
+      return;
+    }
+
     final now = DateTime.now();
     final bookmark = AudioBookmark(
       id: now.microsecondsSinceEpoch.toString(),
@@ -638,22 +642,86 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       positionMs: _player.position.inMilliseconds,
       createdAt: now,
     );
-    setState(() {
-      _bookmarks.add(bookmark);
-      _bookmarks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    });
-    await _store.saveBookmarks(_bookmarks);
-    _showMessage(
-      'نشانک در ${_formatDuration(Duration(milliseconds: bookmark.positionMs))} ذخیره شد.',
-    );
+    final updatedBookmarks = [..._bookmarks, bookmark]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    try {
+      await _store.saveBookmarks(updatedBookmarks);
+      if (!mounted) return;
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(updatedBookmarks);
+      });
+      _showMessage(
+        'نشانک در ${_formatDuration(Duration(milliseconds: bookmark.positionMs))} ذخیره شد.',
+      );
+    } catch (error) {
+      _showMessage('ذخیره نشانک ناموفق بود: $error');
+    }
+  }
+
+  Future<void> _playBookmark(AudioBookmark bookmark) async {
+    final trackIndex =
+        _tracks.indexWhere((track) => track.path == bookmark.audioPath);
+    if (trackIndex < 0) {
+      _showMessage('فایل صوتی این نشانک در کتابخانه موجود نیست.');
+      return;
+    }
+
+    try {
+      if (_player.sequence.length != _tracks.length) {
+        await _replacePlaylist(autoplay: false);
+      }
+      final duration = _player.duration;
+      var position = Duration(milliseconds: bookmark.positionMs);
+      if (duration != null && position > duration) position = duration;
+      await _player.seek(position, index: trackIndex);
+      await _player.play();
+    } catch (error) {
+      _showMessage('پخش از نشانک ممکن نشد: $error');
+    }
   }
 
   Widget _buildBookmarksTab(ColorScheme colors) {
-    return const Center(
-      child: Text(
-        'نشانک ها',
-        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      ),
+    if (_bookmarks.isEmpty) {
+      return const Center(
+        child: Text(
+          'هنوز نشانکی ثبت نشده است. هنگام پخش، دکمه نشانک را لمس کن.',
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+      itemCount: _bookmarks.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
+      itemBuilder: (context, index) {
+        final bookmark = _bookmarks[index];
+        final createdAt = bookmark.createdAt;
+        final dateLabel =
+            '${createdAt.year}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.day.toString().padLeft(2, '0')}  '
+            '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
+
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: Icon(Icons.bookmark_rounded, color: colors.primary),
+            title: Text(
+              bookmark.audioTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              '${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  $dateLabel',
+            ),
+            trailing: const Icon(Icons.play_circle_outline_rounded),
+            onTap: () => _playBookmark(bookmark),
+          ),
+        );
+      },
     );
   }
 
