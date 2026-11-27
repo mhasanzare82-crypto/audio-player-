@@ -946,21 +946,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBookmarksTab(ColorScheme colors) {
-    if (_bookmarks.isEmpty) {
+    final track = _currentTrack;
+    final trackBookmarks = track == null
+        ? const <AudioBookmark>[]
+        : _bookmarks
+            .where((bookmark) => bookmark.audioPath == track.path)
+            .toList();
+
+    if (track == null) {
       return const Center(
         child: Text(
-          'هنوز نشانکی ثبت نشده است. هنگام پخش، دکمه نشانک را لمس کن.',
+          'برای مشاهده نشانک‌ها، ابتدا یک فایل صوتی انتخاب کن.',
           textAlign: TextAlign.center,
         ),
       );
     }
 
+    if (trackBookmarks.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'برای «${track.title}» هنوز نشانکی ثبت نشده است. هنگام پخش این فایل، دکمه نشانک را لمس کن.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
     return ListView.separated(
+      key: ValueKey('bookmarks-${track.path}'),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
-      itemCount: _bookmarks.length,
+      itemCount: trackBookmarks.length,
       separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (context, index) {
-        final bookmark = _bookmarks[index];
+        final bookmark = trackBookmarks[index];
         final createdAt = bookmark.createdAt;
         final dateLabel =
             '${createdAt.year}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.day.toString().padLeft(2, '0')}  '
