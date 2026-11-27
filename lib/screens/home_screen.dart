@@ -1487,8 +1487,183 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildSmartTab(ColorScheme colors) {
-    return const Center(
-      child: Text('بخش هوشمند'),
+    final topics = _availableSmartTopics;
+    final selectedTopic =
+        topics.contains(_selectedSmartTopic) ? _selectedSmartTopic : null;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        Text(
+          'پخش هوشمند',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'موضوع را انتخاب کن تا نشانک‌های هم‌موضوع از فایل‌های صوتی مختلف پیدا و پخش شوند.',
+          style: TextStyle(color: colors.onSurfaceVariant),
+        ),
+        const SizedBox(height: 20),
+        Text('روش انتخاب موضوع',
+            style: Theme.of(context).textTheme.titleMedium),
+        RadioListTile<String>(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: 'manual',
+          groupValue: _smartTopicMode,
+          title: const Text('انتخاب موضوع توسط من'),
+          onChanged: (value) async {
+            if (value == null) return;
+            setState(() => _smartTopicMode = value);
+            await _saveSmartSettings();
+          },
+        ),
+        RadioListTile<String>(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: 'random',
+          groupValue: _smartTopicMode,
+          title: const Text('انتخاب تصادفی موضوع'),
+          onChanged: (value) async {
+            if (value == null) return;
+            setState(() => _smartTopicMode = value);
+            await _saveSmartSettings();
+          },
+        ),
+        if (_smartTopicMode == 'manual') ...[
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: selectedTopic,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'موضوع موردنظر',
+              border: OutlineInputBorder(),
+            ),
+            hint: const Text('انتخاب موضوع'),
+            items: topics
+                .map((topic) => DropdownMenuItem<String>(
+                      value: topic,
+                      child: Text(topic),
+                    ))
+                .toList(),
+            onChanged: (value) async {
+              setState(() => _selectedSmartTopic = value);
+              await _saveSmartSettings();
+            },
+          ),
+        ] else ...[
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.shuffle_rounded),
+            title: const Text('موضوع در هر شروع به‌صورت تصادفی انتخاب می‌شود.'),
+            subtitle: Text('${topics.length} موضوع دارای نشانک'),
+          ),
+        ],
+        const SizedBox(height: 20),
+        Text('ترتیب پخش نشانک‌ها',
+            style: Theme.of(context).textTheme.titleMedium),
+        RadioListTile<String>(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: 'sequential',
+          groupValue: _smartOrderMode,
+          title: const Text('به ترتیب ثبت نشانک‌ها'),
+          onChanged: (value) async {
+            if (value == null) return;
+            setState(() => _smartOrderMode = value);
+            await _saveSmartSettings();
+          },
+        ),
+        RadioListTile<String>(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: 'random',
+          groupValue: _smartOrderMode,
+          title: const Text('به‌صورت تصادفی'),
+          onChanged: (value) async {
+            if (value == null) return;
+            setState(() => _smartOrderMode = value);
+            await _saveSmartSettings();
+          },
+        ),
+        const SizedBox(height: 18),
+        if (topics.isEmpty)
+          const ListTile(
+            leading: Icon(Icons.info_outline_rounded),
+            title: Text('هنوز موضوعی ثبت نشده است.'),
+            subtitle: Text('از تب نشانک‌ها، برای نشانک‌ها عنوان و موضوع تعیین کن.'),
+          ),
+        if (_activeSmartTopic != null)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.graphic_eq_rounded),
+            title: Text('موضوع در حال پخش: $_activeSmartTopic'),
+          ),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: topics.isEmpty ? null : _toggleSmartPlayback,
+                icon: StreamBuilder<bool>(
+                  stream: _smartPlayer.playingStream,
+                  initialData: _smartPlayer.playing,
+                  builder: (context, snapshot) => Icon(
+                    snapshot.data == true
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                  ),
+                ),
+                label: StreamBuilder<bool>(
+                  stream: _smartPlayer.playingStream,
+                  initialData: _smartPlayer.playing,
+                  builder: (context, snapshot) => Text(
+                    snapshot.data == true ? 'مکث' : 'شروع پخش هوشمند',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            IconButton.filledTonal(
+              tooltip: 'توقف پخش هوشمند',
+              onPressed: _stopSmartPlayback,
+              icon: const Icon(Icons.stop_rounded),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        StreamBuilder<Duration>(
+          stream: _smartPlayer.positionStream,
+          initialData: Duration.zero,
+          builder: (context, positionSnapshot) {
+            return StreamBuilder<Duration?>(
+              stream: _smartPlayer.durationStream,
+              builder: (context, durationSnapshot) {
+                final position = positionSnapshot.data ?? Duration.zero;
+                final duration = durationSnapshot.data ?? Duration.zero;
+                final max = duration.inMilliseconds.toDouble();
+                return Column(
+                  children: [
+                    LinearProgressIndicator(
+                      value: max <= 0
+                          ? 0
+                          : (position.inMilliseconds / max).clamp(0.0, 1.0),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_formatDuration(position)),
+                        Text(_formatDuration(duration)),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ],
     );
   }
 
