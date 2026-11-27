@@ -1375,21 +1375,48 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textDirection: TextDirection.rtl,
+                  style: const TextStyle(fontSize: 12),
                 ),
-                subtitle: Text(isCurrent ? 'در حال پخش' : 'فایل صوتی'),
+                subtitle: Text(
+                  isCurrent ? 'در حال پخش' : 'فایل صوتی',
+                  style: const TextStyle(fontSize: 10),
+                ),
                 onTap: () => _playTrack(trackIndex),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: 'پخش فایل',
-                      onPressed: () => _playTrack(trackIndex),
-                      icon: const Icon(Icons.play_arrow_rounded),
+                trailing: PopupMenuButton<String>(
+                  tooltip: 'گزینه‌های فایل صوتی',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                  iconSize: 19,
+                  onSelected: (action) {
+                    if (action == 'play') {
+                      _playTrack(trackIndex);
+                    } else if (action == 'delete') {
+                      _removeTrack(trackIndex);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem<String>(
+                      value: 'play',
+                      child: Row(
+                        children: [
+                          Icon(Icons.play_arrow_rounded, size: 19),
+                          SizedBox(width: 10),
+                          Text('پخش'),
+                        ],
+                      ),
                     ),
-                    IconButton(
-                      tooltip: 'حذف فایل از کتابخانه',
-                      onPressed: () => _removeTrack(trackIndex),
-                      icon: const Icon(Icons.delete_outline_rounded),
+                    const PopupMenuItem<String>(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline_rounded, size: 19),
+                          SizedBox(width: 10),
+                          Text('حذف'),
+                        ],
+                      ),
                     ),
                   ],
                 ),
