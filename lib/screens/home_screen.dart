@@ -2337,6 +2337,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         track: track,
         initialText: _lyrics[track.path] ?? '',
         onSave: (value) => _saveLyrics(track.path, value),
+        onSaveComplete: () {
+          if (mounted) setState(() => _lyricsEditing = false);
+        },
       );
     }
     return Padding(
@@ -2707,11 +2710,13 @@ class _LyricsEditor extends StatefulWidget {
     required this.track,
     required this.initialText,
     required this.onSave,
+    required this.onSaveComplete,
   });
 
   final AudioTrack track;
   final String initialText;
   final Future<void> Function(String value) onSave;
+  final VoidCallback onSaveComplete;
 
   @override
   State<_LyricsEditor> createState() => _LyricsEditorState();
@@ -2868,29 +2873,39 @@ class _LyricsEditorState extends State<_LyricsEditor> {
                       _hasSearched = false;
                     });
                   },
+                  style: const TextStyle(fontSize: 12),
                   decoration: InputDecoration(
                     hintText: 'جست‌وجو در متن همین ویس...',
-                    prefixIcon: const Icon(Icons.search),
+                    hintStyle: const TextStyle(fontSize: 12),
+                    prefixIcon: const Icon(Icons.search, size: 17),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
                     border: const OutlineInputBorder(),
+                    suffixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     suffixIcon: IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                       tooltip: 'جست‌وجو',
                       onPressed: _findMatches,
-                      icon: const Icon(Icons.search_rounded),
+                      icon: const Icon(Icons.search_rounded, size: 17),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
               IconButton.filledTonal(
+                style: IconButton.styleFrom(minimumSize: const Size(32, 32), maximumSize: const Size(32, 32), padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                 tooltip: 'نتیجه قبلی',
                 onPressed: hasMatches ? () => _moveMatch(-1) : null,
-                icon: const Icon(Icons.keyboard_arrow_up_rounded),
+                icon: const Icon(Icons.keyboard_arrow_up_rounded, size: 18),
               ),
+              const SizedBox(width: 3),
               IconButton.filledTonal(
+                style: IconButton.styleFrom(minimumSize: const Size(32, 32), maximumSize: const Size(32, 32), padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                 tooltip: 'نتیجه بعدی',
                 onPressed: hasMatches ? () => _moveMatch(1) : null,
-                icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
               ),
             ],
           ),
@@ -2906,7 +2921,7 @@ class _LyricsEditorState extends State<_LyricsEditor> {
                           ? 'کلمه‌ای با این عبارت پیدا نشد.'
                           : 'برای شروع، دکمه جست‌وجو را بزن.',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: hasMatches ? colors.primary : colors.onSurfaceVariant,
               ),
             ),
@@ -2922,6 +2937,7 @@ class _LyricsEditorState extends State<_LyricsEditor> {
               textAlignVertical: TextAlignVertical.top,
               textDirection: TextDirection.rtl,
               onChanged: _scheduleSave,
+              style: const TextStyle(fontSize: 14),
               decoration: const InputDecoration(
                 hintText: 'متن این ویس را اینجا بنویس...',
                 contentPadding: EdgeInsets.all(16),
@@ -2952,12 +2968,15 @@ class _LyricsEditorState extends State<_LyricsEditor> {
               ),
               const Spacer(),
               TextButton.icon(
-                onPressed: () {
-                  _saveTimer?.cancel();
-                  unawaited(_save(_controller.text));
-                },
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('ذخیره'),
+                onPressed: _saving
+                    ? null
+                    : () async {
+                        _saveTimer?.cancel();
+                        await _save(_controller.text);
+                        if (mounted) widget.onSaveComplete();
+                      },
+                icon: const Icon(Icons.save_outlined, size: 18),
+                label: const Text('ذخیره', style: TextStyle(fontSize: 13)),
               ),
             ],
           ),
