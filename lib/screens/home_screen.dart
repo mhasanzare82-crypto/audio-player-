@@ -1373,6 +1373,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _lyricsHoldTimer?.cancel();
     _tabController.dispose();
     _player.dispose();
+    unawaited(_smartPlayer.dispose());
     super.dispose();
   }
 
@@ -2021,6 +2022,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ? colors.error
                           : colors.onSurfaceVariant,
                     ),
+                  ),
+                  IconButton(
+                    tooltip: 'شروع پخش هوشمند',
+                    onPressed: _toggleSmartPlayback,
+                    icon: const Icon(Icons.auto_awesome_rounded),
                   ),
                   IconButton(
                     tooltip: 'تنظیم صدای پلیر',
