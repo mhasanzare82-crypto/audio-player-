@@ -116,10 +116,13 @@ class LibraryStore {
 
   Future<void> saveBookmarks(List<AudioBookmark> bookmarks) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    final saved = await prefs.setString(
       _bookmarksKey,
       jsonEncode(bookmarks.map((bookmark) => bookmark.toJson()).toList()),
     );
+    if (!saved) {
+      throw StateError('ذخیره نشانک‌ها در حافظه دستگاه انجام نشد.');
+    }
   }
 
   Future<List<AudioPlaylist>> loadPlaylists() async {
