@@ -1133,34 +1133,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ],
               ),
             ),
-            SizedBox(
-              width: 56,
-              height: 68,
-              child: IconButton(
-                tooltip: _currentTrack == null
-                    ? 'علاقه‌مندی‌ها (ابتدا یک فایل پخش کن)'
-                    : _currentTrackIsFavorite
-                        ? 'حذف از علاقه‌مندی‌ها'
-                        : 'افزودن به علاقه‌مندی‌ها',
-                onPressed: _toggleCurrentTrackFavorite,
-                padding: EdgeInsets.zero,
-                icon: SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: Center(
-                    child: Icon(
-                      _currentTrackIsFavorite
-                          ? Icons.favorite_rounded
-                          : Icons.favorite_border_rounded,
-                      size: 26,
-                      color: _currentTrackIsFavorite
-                          ? colors.error
-                          : colors.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -1483,6 +1455,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     tooltip: 'ثبت نشانک در زمان فعلی',
                     onPressed: track == null ? null : _addBookmark,
                     icon: const Icon(Icons.bookmark_add_outlined),
+                  ),
+                  IconButton(
+                    tooltip: _currentTrack == null
+                        ? 'علاقه‌مندی‌ها (ابتدا یک فایل پخش کن)'
+                        : _currentTrackIsFavorite
+                            ? 'حذف از علاقه‌مندی‌ها'
+                            : 'افزودن به علاقه‌مندی‌ها',
+                    onPressed: _toggleCurrentTrackFavorite,
+                    icon: Icon(
+                      _currentTrackIsFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: _currentTrackIsFavorite
+                          ? colors.error
+                          : colors.onSurfaceVariant,
+                    ),
                   ),
                   IconButton(
                     tooltip: 'تنظیم صدای پلیر',
