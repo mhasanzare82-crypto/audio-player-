@@ -1650,7 +1650,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   DropdownMenuItem(
                     value: 'random',
-                    height: 38,
                     child: Text('انتخاب موضوع تصادفی', style: TextStyle(fontSize: 12)),
                   ),
                 ],
@@ -1706,12 +1705,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 items: const [
                   DropdownMenuItem(
                     value: 'sequential',
-                    height: 38,
                     child: Text('به ترتیب ثبت', style: TextStyle(fontSize: 12)),
                   ),
                   DropdownMenuItem(
                     value: 'random',
-                    height: 38,
                     child: Text('به‌صورت تصادفی', style: TextStyle(fontSize: 12)),
                   ),
                 ],
