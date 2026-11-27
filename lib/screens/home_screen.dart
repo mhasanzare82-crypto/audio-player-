@@ -647,13 +647,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
 
+    final position = _player.position;
+    final details = await _showBookmarkDetailsDialog(
+      initialTitle: track.title,
+    );
+    if (details == null) return;
+    if (details['topic']!.isEmpty) {
+      _showMessage('برای استفاده از پخش هوشمند، موضوع نشانک را وارد کن.');
+      return;
+    }
+
     final now = DateTime.now();
     final bookmark = AudioBookmark(
       id: now.microsecondsSinceEpoch.toString(),
       audioPath: track.path,
       audioTitle: track.title,
-      positionMs: _player.position.inMilliseconds,
+      positionMs: position.inMilliseconds,
       createdAt: now,
+      title: details['title']!.isEmpty ? track.title : details['title']!,
+      topic: details['topic']!,
     );
     final updatedBookmarks = [..._bookmarks, bookmark]
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -665,9 +677,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _bookmarks
           ..clear()
           ..addAll(updatedBookmarks);
+        _selectedSmartTopic ??= bookmark.topic;
       });
+      await _saveSmartSettings();
       _showMessage(
-        'نشانک در ${_formatDuration(Duration(milliseconds: bookmark.positionMs))} ذخیره شد.',
+        'نشانک با موضوع «${bookmark.topic}» در ${_formatDuration(position)} ذخیره شد.',
       );
     } catch (error) {
       _showMessage('ذخیره نشانک ناموفق بود: $error');
