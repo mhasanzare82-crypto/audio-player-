@@ -76,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _selectedSmartTopic;
   String? _activeSmartTopic;
   bool _smartQueueReady = false;
+  final List<AudioBookmark> _smartQueueBookmarks = [];
   late final AnimationController _smartTopicMarqueeController;
   String? _expandedPlaylistId;
   static const String _favoritesPlaylistId = 'audio_player_favorites_v1';
@@ -970,12 +971,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (!mounted) return;
       setState(() {
         _activeSmartTopic = topic;
+        _smartQueueBookmarks
+          ..clear()
+          ..addAll(matching);
         _smartQueueReady = true;
       });
       await _smartPlayer.play();
     } catch (error) {
       if (mounted) {
-        setState(() => _smartQueueReady = false);
+        setState(() {
+          _smartQueueReady = false;
+          _smartQueueBookmarks.clear();
+        });
         _showMessage('شروع پخش هوشمند ناموفق بود: $error');
       }
     }
@@ -1000,6 +1007,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       setState(() {
         _smartQueueReady = false;
         _activeSmartTopic = null;
+        _smartQueueBookmarks.clear();
       });
     }
   }
@@ -1782,12 +1790,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ],
         ),
-        if (topics.isEmpty)
-          const ListTile(
-            leading: Icon(Icons.info_outline_rounded),
-            title: Text('هنوز موضوعی ثبت نشده است.'),
-            subtitle: Text('در نوار پخش، با دکمه نشانک موضوعی ابتدا و انتهای هر موضوع را ثبت کن.'),
-          ),
+        const SizedBox(height: 6),
         Row(
           children: [
             Expanded(
@@ -1819,6 +1822,122 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        if (_smartQueueBookmarks.isNotEmpty)
+          StreamBuilder<int?>(
+            stream: _smartPlayer.currentIndexStream,
+            initialData: _smartPlayer.currentIndex,
+            builder: (context, snapshot) {
+              final activeIndex = snapshot.data ?? -1;
+              return Container(
+                constraints: const BoxConstraints(maxHeight: 240),
+                decoration: BoxDecoration(
+                  border: Border.all(color: colors.outlineVariant),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  itemCount: _smartQueueBookmarks.length,
+                  itemBuilder: (context, index) {
+                    final bookmark = _smartQueueBookmarks[index];
+                    final isActive = index == activeIndex;
+                    final endMs = bookmark.endPositionMs ?? bookmark.positionMs;
+                    final duration = Duration(
+                      milliseconds: (endMs - bookmark.positionMs).clamp(0, 1 << 31),
+                    );
+                    return Container(
+                      constraints: const BoxConstraints(minHeight: 42),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      color: isActive
+                          ? colors.primary.withValues(alpha: 0.10)
+                          : null,
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 48,
+                            child: Text(
+                              _formatDuration(duration),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isActive ? colors.primary : colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            isActive ? Icons.graphic_eq_rounded : Icons.bookmark_outline_rounded,
+                            size: 17,
+                            color: isActive ? colors.primary : colors.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  bookmark.audioTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  bookmark.topic,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isActive ? colors.primary : colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isActive)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 6),
+                              child: Text(
+                                'در حال پخش',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: colors.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          )
+        else if (topics.isEmpty)
+          const ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.info_outline_rounded, size: 20),
+            title: Text('هنوز موضوعی ثبت نشده است.', style: TextStyle(fontSize: 13)),
+            subtitle: Text(
+              'در نوار پخش، با دکمه نشانک موضوعی ابتدا و انتهای هر موضوع را ثبت کن.',
+              style: TextStyle(fontSize: 11),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              'برای نمایش فهرست، پخش یک موضوع را شروع کن.',
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+            ),
+          ),
         const SizedBox(height: 12),
         StreamBuilder<Duration>(
           stream: _smartPlayer.positionStream,
