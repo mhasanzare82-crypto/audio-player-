@@ -5,6 +5,10 @@ class AudioBookmark {
     required this.audioTitle,
     required this.positionMs,
     required this.createdAt,
+    this.title = '',
+    this.topic = '',
+    this.endPositionMs,
+    this.isTopicRange = false,
   });
 
   final String id;
@@ -12,6 +16,10 @@ class AudioBookmark {
   final String audioTitle;
   final int positionMs;
   final DateTime createdAt;
+  final String title;
+  final String topic;
+  final int? endPositionMs;
+  final bool isTopicRange;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -19,6 +27,10 @@ class AudioBookmark {
         'audioTitle': audioTitle,
         'positionMs': positionMs,
         'createdAt': createdAt.toIso8601String(),
+        'title': title,
+        'topic': topic,
+        'endPositionMs': endPositionMs,
+        'isTopicRange': isTopicRange,
       };
 
   factory AudioBookmark.fromJson(Map<String, dynamic> json) {
@@ -28,6 +40,10 @@ class AudioBookmark {
       audioTitle: json['audioTitle'] as String,
       positionMs: (json['positionMs'] as num).toInt(),
       createdAt: DateTime.parse(json['createdAt'] as String),
+      title: json['title']?.toString() ?? '',
+      topic: json['topic']?.toString() ?? '',
+      endPositionMs: (json['endPositionMs'] as num?)?.toInt(),
+      isTopicRange: json['isTopicRange'] == true,
     );
   }
 }
