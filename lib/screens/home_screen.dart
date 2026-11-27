@@ -1531,13 +1531,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               Row(
                 children: [
-                  Icon(Icons.graphic_eq, color: colors.primary),
-                  const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      track?.title ?? 'فایلی برای پخش انتخاب نشده',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: _MarqueeText(
+                      text: track?.title ?? 'فایلی برای پخش انتخاب نشده',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -1999,6 +1995,124 @@ class _LyricsEditorState extends State<_LyricsEditor> {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+class _MarqueeText extends StatefulWidget {
+  const _MarqueeText({
+    required this.text,
+    required this.style,
+    this.gap = 36,
+  });
+
+  final String text;
+  final TextStyle style;
+  final double gap;
+
+  @override
+  State<_MarqueeText> createState() => _MarqueeTextState();
+}
+
+class _MarqueeTextState extends State<_MarqueeText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  bool _started = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MarqueeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text || oldWidget.style != widget.style) {
+      _controller.stop();
+      _controller.value = 0;
+      _started = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: widget.text, style: widget.style),
+          textDirection: TextDirection.rtl,
+          maxLines: 1,
+        )..layout();
+        final textWidth = painter.width;
+        final availableWidth = constraints.maxWidth;
+
+        if (textWidth <= availableWidth || availableWidth <= 0) {
+          return Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              widget.text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textDirection: TextDirection.rtl,
+              style: widget.style,
+            ),
+          );
+        }
+
+        final distance = textWidth + widget.gap;
+        if (!_started) {
+          _started = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final milliseconds =
+                (distance / 32 * 1000).round().clamp(1800, 20000).toInt();
+            _controller.duration = Duration(milliseconds: milliseconds);
+            _controller.repeat();
+          });
+        }
+
+        return ClipRect(
+          child: SizedBox(
+            height: painter.height,
+            width: availableWidth,
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) => Transform.translate(
+                offset: Offset(-distance * _controller.value, 0),
+                child: child,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.text,
+                    maxLines: 1,
+                    softWrap: false,
+                    textDirection: TextDirection.rtl,
+                    style: widget.style,
+                  ),
+                  SizedBox(width: widget.gap),
+                  Text(
+                    widget.text,
+                    maxLines: 1,
+                    softWrap: false,
+                    textDirection: TextDirection.rtl,
+                    style: widget.style,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
