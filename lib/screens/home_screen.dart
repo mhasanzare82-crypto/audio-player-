@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
@@ -41,6 +42,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     handleInterruptions: false,
     handleAudioSessionActivation: !Platform.isAndroid,
   );
+  final AudioPlayer _smartPlayer = AudioPlayer(
+    handleInterruptions: false,
+    handleAudioSessionActivation: !Platform.isAndroid,
+  );
   final LibraryStore _store = LibraryStore();
   final FolderLibraryService _folderService = FolderLibraryService();
   final List<AudioTrack> _tracks = [];
@@ -58,6 +63,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
   final List<AudioPlaylist> _playlists = [];
+  String _smartTopicMode = 'manual';
+  String _smartOrderMode = 'sequential';
+  String? _selectedSmartTopic;
+  String? _activeSmartTopic;
+  bool _smartQueueReady = false;
   String? _expandedPlaylistId;
   static const String _favoritesPlaylistId = 'audio_player_favorites_v1';
   static const String _favoritesPlaylistName = 'علاقه‌مندی‌ها';
@@ -139,6 +149,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
       final savedPlaylists = await _store.loadPlaylists();
+      _smartTopicMode = preferences.getString('smart_topic_mode_v1') ?? 'manual';
+      _smartOrderMode = preferences.getString('smart_order_mode_v1') ?? 'sequential';
+      _selectedSmartTopic = preferences.getString('smart_selected_topic_v1');
       if (!savedPlaylists.any((item) => item.id == _favoritesPlaylistId)) {
         savedPlaylists.add(const AudioPlaylist(
           id: _favoritesPlaylistId,
