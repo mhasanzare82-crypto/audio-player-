@@ -2622,6 +2622,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                       IconButton(
                         tooltip: 'ترکیب صدای دو پلیر',
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 36,
+                        ),
+                        padding: EdgeInsets.zero,
                         onPressed: () => setState(
                           () => _showCrossfadePanel = !_showCrossfadePanel,
                         ),
