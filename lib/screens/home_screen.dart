@@ -64,6 +64,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _showSmartVolumeSlider = false;
   double _crossfadePosition = 0.5;
   bool _showCrossfadePanel = false;
+  bool _isSmartSeeking = false;
+  double _smartSeekPreviewMs = 0;
   final Map<String, List<VolumeRange>> _volumeRangesByTrack = {};
   double? _lastAppliedVolume;
   late final TabController _tabController;
@@ -2079,18 +2081,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 final position = positionSnapshot.data ?? Duration.zero;
                 final duration = durationSnapshot.data ?? Duration.zero;
                 final max = duration.inMilliseconds.toDouble();
+                final currentMs = _isSmartSeeking
+                    ? _smartSeekPreviewMs
+                    : position.inMilliseconds.toDouble();
+                final safeMax = max > 0 ? max : 1.0;
+                final sliderValue = currentMs.clamp(0.0, safeMax).toDouble();
+                final displayPosition = Duration(
+                  milliseconds: sliderValue.round(),
+                );
                 return Column(
                   children: [
-                    LinearProgressIndicator(
-                      value: max <= 0
-                          ? 0
-                          : (position.inMilliseconds / max).clamp(0.0, 1.0),
+                    Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Slider(
+                        value: sliderValue,
+                        min: 0,
+                        max: safeMax,
+                        onChanged: max <= 0
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _isSmartSeeking = true;
+                                  _smartSeekPreviewMs = value;
+                                });
+                              },
+                        onChangeEnd: max <= 0
+                            ? null
+                            : (value) async {
+                                await _smartPlayer.seek(
+                                  Duration(milliseconds: value.round()),
+                                );
+                                if (mounted) {
+                                  setState(() => _isSmartSeeking = false);
+                                }
+                              },
+                      ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 2),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(_formatDuration(position)),
+                        Text(_formatDuration(displayPosition)),
                         Text(_formatDuration(duration)),
                       ],
                     ),
