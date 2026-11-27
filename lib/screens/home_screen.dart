@@ -1043,6 +1043,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await preferences.setDouble('smart_topic_volume_v1', normalized);
   }
 
+  Future<void> _skipSmartItem({required bool next}) async {
+    if (!_smartQueueReady || _smartQueueBookmarks.isEmpty) return;
+    final currentIndex = _smartPlayer.currentIndex ?? 0;
+    final targetIndex = currentIndex + (next ? 1 : -1);
+    if (targetIndex < 0 || targetIndex >= _smartQueueBookmarks.length) {
+      _showMessage(next ? 'به انتهای فهرست پخش هوشمند رسیده‌ای.' : 'این اولین مورد فهرست پخش هوشمند است.');
+      return;
+    }
+    try {
+      await _smartPlayer.seek(Duration.zero, index: targetIndex);
+      if (!_smartPlayer.playing) await _smartPlayer.play();
+      if (mounted) setState(() => _isSmartSeeking = false);
+    } catch (error) {
+      _showMessage('رفتن به مورد ${next ? 'بعدی' : 'قبلی'} ناموفق بود: $error');
+    }
+  }
+
   Future<void> _toggleSmartPlayback() async {
     if (_smartPlayer.playing) {
       await _smartPlayer.pause();
@@ -2071,6 +2088,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
         const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              tooltip: 'مورد قبلی هوشمند',
+              onPressed: !_smartQueueReady ||
+                      (_smartPlayer.currentIndex ?? 0) <= 0
+                  ? null
+                  : () => _skipSmartItem(next: false),
+              icon: const Icon(Icons.skip_previous_rounded),
+            ),
+            const SizedBox(width: 20),
+            IconButton(
+              tooltip: 'مورد بعدی هوشمند',
+              onPressed: !_smartQueueReady ||
+                      (_smartPlayer.currentIndex ?? 0) >=
+                          _smartQueueBookmarks.length - 1
+                  ? null
+                  : () => _skipSmartItem(next: true),
+              icon: const Icon(Icons.skip_next_rounded),
+            ),
+          ],
+        ),
         StreamBuilder<Duration>(
           stream: _smartPlayer.positionStream,
           initialData: Duration.zero,
