@@ -1598,104 +1598,81 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildSmartTab(ColorScheme colors) {
     final topics = _availableSmartTopics;
-    final selectedTopic =
-        topics.contains(_selectedSmartTopic) ? _selectedSmartTopic : null;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       children: [
-        Text(
-          'پخش هوشمند',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _smartTopicMode,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'انتخاب موضوع',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'manual', child: Text('انتخاب موضوع توسط من')),
+                  DropdownMenuItem(value: 'random', child: Text('انتخاب موضوع تصادفی')),
+                ],
+                onChanged: (value) async {
+                  if (value == null) return;
+                  setState(() => _smartTopicMode = value);
+                  await _saveSmartSettings();
+                  if (value == 'manual' && topics.isNotEmpty && mounted) {
+                    await showDialog<void>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('انتخاب موضوع'),
+                        content: SizedBox(
+                          width: 320,
+                          child: ListView(
+                            shrinkWrap: true,
+                            children: [
+                              for (final topic in topics)
+                                ListTile(
+                                  title: Text(topic),
+                                  trailing: _selectedSmartTopic == topic
+                                      ? const Icon(Icons.check_rounded)
+                                      : null,
+                                  onTap: () async {
+                                    setState(() => _selectedSmartTopic = topic);
+                                    await _saveSmartSettings();
+                                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                },
               ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'فقط بازه‌های موضوعی که با دکمه شروع و پایان ثبت شده‌اند، برای انتخاب و پخش استفاده می‌شوند.',
-          style: TextStyle(color: colors.onSurfaceVariant),
-        ),
-        const SizedBox(height: 20),
-        Text('روش انتخاب موضوع',
-            style: Theme.of(context).textTheme.titleMedium),
-        RadioListTile<String>(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          value: 'manual',
-          groupValue: _smartTopicMode,
-          title: const Text('انتخاب موضوع توسط من'),
-          onChanged: (value) async {
-            if (value == null) return;
-            setState(() => _smartTopicMode = value);
-            await _saveSmartSettings();
-          },
-        ),
-        RadioListTile<String>(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          value: 'random',
-          groupValue: _smartTopicMode,
-          title: const Text('انتخاب تصادفی موضوع'),
-          onChanged: (value) async {
-            if (value == null) return;
-            setState(() => _smartTopicMode = value);
-            await _saveSmartSettings();
-          },
-        ),
-        if (_smartTopicMode == 'manual') ...[
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: selectedTopic,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'موضوع موردنظر',
-              border: OutlineInputBorder(),
             ),
-            hint: const Text('انتخاب موضوع'),
-            items: topics
-                .map((topic) => DropdownMenuItem<String>(
-                      value: topic,
-                      child: Text(topic),
-                    ))
-                .toList(),
-            onChanged: (value) async {
-              setState(() => _selectedSmartTopic = value);
-              await _saveSmartSettings();
-            },
-          ),
-        ] else ...[
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.shuffle_rounded),
-            title: const Text('موضوع در هر شروع به‌صورت تصادفی انتخاب می‌شود.'),
-            subtitle: Text('${topics.length} موضوع دارای نشانک موضوعی'),
-          ),
-        ],
-        const SizedBox(height: 20),
-        Text('ترتیب پخش نشانک‌ها',
-            style: Theme.of(context).textTheme.titleMedium),
-        RadioListTile<String>(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          value: 'sequential',
-          groupValue: _smartOrderMode,
-          title: const Text('به ترتیب ثبت نشانک‌ها'),
-          onChanged: (value) async {
-            if (value == null) return;
-            setState(() => _smartOrderMode = value);
-            await _saveSmartSettings();
-          },
-        ),
-        RadioListTile<String>(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          value: 'random',
-          groupValue: _smartOrderMode,
-          title: const Text('به‌صورت تصادفی'),
-          onChanged: (value) async {
-            if (value == null) return;
-            setState(() => _smartOrderMode = value);
-            await _saveSmartSettings();
-          },
+            const SizedBox(width: 8),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _smartOrderMode,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'ترتیب پخش نشانک‌ها',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'sequential', child: Text('به ترتیب ثبت')),
+                  DropdownMenuItem(value: 'random', child: Text('به‌صورت تصادفی')),
+                ],
+                onChanged: (value) async {
+                  if (value == null) return;
+                  setState(() => _smartOrderMode = value);
+                  await _saveSmartSettings();
+                },
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 18),
         if (topics.isEmpty)
