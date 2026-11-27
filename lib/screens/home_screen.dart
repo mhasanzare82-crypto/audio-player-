@@ -994,12 +994,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               bookmark.title.isEmpty ? bookmark.audioTitle : bookmark.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             subtitle: Text(
               '${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  $dateLabel',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             trailing: PopupMenuButton<String>(
               tooltip: 'مدیریت نشانک',
