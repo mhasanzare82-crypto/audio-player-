@@ -65,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
   Timer? _themeHoldTimer;
-  bool _themePickerOpened = false;
+  bool _themeLongPressTriggered = false;
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
   int? _pendingTopicStartMs;
@@ -1777,33 +1777,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _onThemeButtonDown(TapDownDetails details) {
-    _themePickerOpened = false;
+  void _onThemeButtonDown(PointerDownEvent event) {
+    _themeLongPressTriggered = false;
     _themeHoldTimer?.cancel();
     _themeHoldTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
-      _themePickerOpened = true;
+      _themeLongPressTriggered = true;
       _showPresetThemePicker();
     });
   }
 
-  void _onThemeButtonUp(TapUpDetails details) {
-    if (_themePickerOpened) {
-      _themePickerOpened = false;
-      _themeHoldTimer?.cancel();
-      _themeHoldTimer = null;
-      return;
-    }
+  void _onThemeButtonUp(PointerUpEvent event) {
+    final wasLongPress = _themeLongPressTriggered;
     final wasShortPress = _themeHoldTimer?.isActive ?? false;
     _themeHoldTimer?.cancel();
     _themeHoldTimer = null;
-    if (wasShortPress) widget.onToggleTheme();
+    _themeLongPressTriggered = false;
+    if (!wasLongPress && wasShortPress) widget.onToggleTheme();
   }
 
-  void _onThemeButtonCancel() {
+  void _onThemeButtonCancel(PointerCancelEvent event) {
     _themeHoldTimer?.cancel();
     _themeHoldTimer = null;
-    _themePickerOpened = false;
+    _themeLongPressTriggered = false;
   }
 
   Future<void> _showPresetThemePicker() async {
@@ -1906,11 +1902,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               Tooltip(
                 message: 'لمس کوتاه: تغییر شب و روز • نگه‌داشتن ۳ ثانیه: انتخاب تم',
-                child: GestureDetector(
+                child: Listener(
                   behavior: HitTestBehavior.opaque,
-                  onTapDown: _onThemeButtonDown,
-                  onTapUp: _onThemeButtonUp,
-                  onTapCancel: _onThemeButtonCancel,
+                  onPointerDown: _onThemeButtonDown,
+                  onPointerUp: _onThemeButtonUp,
+                  onPointerCancel: _onThemeButtonCancel,
                   child: SizedBox(
                     width: 48,
                     height: 48,
