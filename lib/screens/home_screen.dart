@@ -674,6 +674,237 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  List<String> get _availableSmartTopics {
+    final topics = _bookmarks
+        .map((bookmark) => bookmark.topic.trim())
+        .where((topic) => topic.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return topics;
+  }
+
+  Future<Map<String, String>?> _showBookmarkDetailsDialog({
+    required String initialTitle,
+    String initialTopic = '',
+  }) async {
+    final titleController = TextEditingController(text: initialTitle);
+    final topicController = TextEditingController(text: initialTopic);
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('مشخصات نشانک'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              autofocus: true,
+              textDirection: TextDirection.rtl,
+              decoration: const InputDecoration(labelText: 'عنوان نشانک'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: topicController,
+              textDirection: TextDirection.rtl,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'موضوع',
+                hintText: 'مثلاً تمرکز',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, {
+              'title': titleController.text.trim(),
+              'topic': topicController.text.trim(),
+            }),
+            child: const Text('ذخیره'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+    topicController.dispose();
+    return result;
+  }
+
+  Future<void> _editBookmark(AudioBookmark bookmark) async {
+    final details = await _showBookmarkDetailsDialog(
+      initialTitle: bookmark.title.isEmpty ? bookmark.audioTitle : bookmark.title,
+      initialTopic: bookmark.topic,
+    );
+    if (details == null) return;
+    if (details['topic']!.isEmpty) {
+      _showMessage('برای استفاده از پخش هوشمند، موضوع نشانک را وارد کن.');
+      return;
+    }
+    final updated = _bookmarks
+        .map((item) => item.id == bookmark.id
+            ? AudioBookmark(
+                id: item.id,
+                audioPath: item.audioPath,
+                audioTitle: item.audioTitle,
+                positionMs: item.positionMs,
+                createdAt: item.createdAt,
+                title: details['title']!,
+                topic: details['topic']!,
+              )
+            : item)
+        .toList();
+    try {
+      await _store.saveBookmarks(updated);
+      if (!mounted) return;
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(updated);
+      });
+    } catch (error) {
+      _showMessage('ویرایش نشانک ذخیره نشد: $error');
+    }
+  }
+
+  Future<void> _deleteBookmark(AudioBookmark bookmark) async {
+    final updated = _bookmarks.where((item) => item.id != bookmark.id).toList();
+    try {
+      await _store.saveBookmarks(updated);
+      if (!mounted) return;
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(updated);
+      });
+    } catch (error) {
+      _showMessage('حذف نشانک ناموفق بود: $error');
+    }
+  }
+
+  Future<void> _saveSmartSettings() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString('smart_topic_mode_v1', _smartTopicMode);
+      await preferences.setString('smart_order_mode_v1', _smartOrderMode);
+      if (_selectedSmartTopic == null) {
+        await preferences.remove('smart_selected_topic_v1');
+      } else {
+        await preferences.setString('smart_selected_topic_v1', _selectedSmartTopic!);
+      }
+    } catch (error) {
+      _showMessage('ذخیره تنظیمات پخش هوشمند ناموفق بود: $error');
+    }
+  }
+
+  Future<void> _startSmartPlayback() async {
+    final topics = _availableSmartTopics;
+    if (topics.isEmpty) {
+      _showMessage('ابتدا در تب نشانک‌ها برای نشانک‌ها موضوع تعیین کن.');
+      _tabController.animateTo(1);
+      return;
+    }
+
+    String topic;
+    if (_smartTopicMode == 'random') {
+      topic = topics[Random().nextInt(topics.length)];
+    } else {
+      final selected = _selectedSmartTopic;
+      if (selected == null || !topics.contains(selected)) {
+        _showMessage('ابتدا یک موضوع برای پخش هوشمند انتخاب کن.');
+        _tabController.animateTo(4);
+        return;
+      }
+      topic = selected;
+    }
+
+    final matching = _bookmarks
+        .where((bookmark) =>
+            bookmark.topic.trim() == topic &&
+            _tracks.any((track) => track.path == bookmark.audioPath))
+        .toList();
+    if (matching.isEmpty) {
+      _showMessage('برای این موضوع نشانک قابل پخشی پیدا نشد.');
+      return;
+    }
+
+    if (_smartOrderMode == 'random') {
+      matching.shuffle(Random());
+    } else {
+      matching.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    }
+
+    final sources = <AudioSource>[];
+    for (final bookmark in matching) {
+      final nextPosition = _bookmarks
+          .where((candidate) =>
+              candidate.audioPath == bookmark.audioPath &&
+              candidate.positionMs > bookmark.positionMs)
+          .map((candidate) => candidate.positionMs)
+          .fold<int?>(null, (nearest, value) =>
+              nearest == null || value < nearest ? value : nearest);
+      final parsed = Uri.parse(bookmark.audioPath);
+      final uri = parsed.scheme == 'content'
+          ? parsed
+          : Uri.file(bookmark.audioPath);
+      sources.add(
+        ClippingAudioSource(
+          child: AudioSource.uri(uri),
+          start: Duration(milliseconds: bookmark.positionMs),
+          end: nextPosition == null ? null : Duration(milliseconds: nextPosition),
+        ),
+      );
+    }
+
+    try {
+      await _player.pause();
+      await _smartPlayer.stop();
+      await _smartPlayer.setAudioSources(
+        sources,
+        initialIndex: 0,
+        initialPosition: Duration.zero,
+      );
+      if (!mounted) return;
+      setState(() {
+        _activeSmartTopic = topic;
+        _smartQueueReady = true;
+      });
+      await _smartPlayer.play();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _smartQueueReady = false);
+        _showMessage('شروع پخش هوشمند ناموفق بود: $error');
+      }
+    }
+  }
+
+  Future<void> _toggleSmartPlayback() async {
+    if (_smartPlayer.playing) {
+      await _smartPlayer.pause();
+      return;
+    }
+    if (_smartQueueReady &&
+        _smartPlayer.processingState != ProcessingState.completed) {
+      await _smartPlayer.play();
+      return;
+    }
+    await _startSmartPlayback();
+  }
+
+  Future<void> _stopSmartPlayback() async {
+    await _smartPlayer.stop();
+    if (mounted) {
+      setState(() {
+        _smartQueueReady = false;
+        _activeSmartTopic = null;
+      });
+    }
+  }
+
   Future<void> _playBookmark(AudioBookmark bookmark) async {
     final trackIndex =
         _tracks.indexWhere((track) => track.path == bookmark.audioPath);
