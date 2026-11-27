@@ -25,11 +25,15 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.isDark,
+    required this.themeId,
     required this.onToggleTheme,
+    required this.onSelectTheme,
   });
 
   final bool isDark;
+  final String themeId;
   final VoidCallback onToggleTheme;
+  final ValueChanged<String> onSelectTheme;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -60,6 +64,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double? _lastAppliedVolume;
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
+  Timer? _themeHoldTimer;
+  bool _themePickerOpened = false;
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
   final List<AudioPlaylist> _playlists = [];
@@ -1371,6 +1377,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _lyricsHoldTimer?.cancel();
+    _themeHoldTimer?.cancel();
     _tabController.dispose();
     _player.dispose();
     unawaited(_smartPlayer.dispose());
@@ -1668,6 +1675,91 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _onThemeButtonDown(TapDownDetails details) {
+    _themePickerOpened = false;
+    _themeHoldTimer?.cancel();
+    _themeHoldTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _themePickerOpened = true;
+      _showPresetThemePicker();
+    });
+  }
+
+  void _onThemeButtonUp(TapUpDetails details) {
+    if (_themePickerOpened) {
+      _themePickerOpened = false;
+      _themeHoldTimer?.cancel();
+      _themeHoldTimer = null;
+      return;
+    }
+    final wasShortPress = _themeHoldTimer?.isActive ?? false;
+    _themeHoldTimer?.cancel();
+    _themeHoldTimer = null;
+    if (wasShortPress) widget.onToggleTheme();
+  }
+
+  void _onThemeButtonCancel() {
+    _themeHoldTimer?.cancel();
+    _themeHoldTimer = null;
+    _themePickerOpened = false;
+  }
+
+  Future<void> _showPresetThemePicker() async {
+    const themes = <({String id, String name, Color color, String description})>[
+      (id: 'teal', name: 'فیروزه‌ای', color: Color(0xFF16A6A0), description: 'تم پیش‌فرض فعلی'),
+      (id: 'blue', name: 'آبی اقیانوسی', color: Color(0xFF2878D0), description: 'آرام و خنک'),
+      (id: 'purple', name: 'بنفش', color: Color(0xFF8764D8), description: 'بنفش مدرن'),
+      (id: 'green', name: 'سبز جنگلی', color: Color(0xFF39865A), description: 'طبیعی و ملایم'),
+      (id: 'amber', name: 'کهربایی', color: Color(0xFFD28A22), description: 'گرم و پرانرژی'),
+      (id: 'rose', name: 'رز', color: Color(0xFFC65D78), description: 'صورتی متمایل به رز'),
+      (id: 'slate', name: 'خاکستری', color: Color(0xFF718096), description: 'خنثی و مینیمال'),
+    ];
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('انتخاب تم برنامه'),
+        content: SizedBox(
+          width: 360,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'حالت فعلی: ${widget.isDark ? 'شب' : 'روز'}',
+                  style: Theme.of(dialogContext).textTheme.bodySmall,
+                ),
+              ),
+              for (final theme in themes)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    radius: 15,
+                    backgroundColor: theme.color,
+                  ),
+                  title: Text(theme.name),
+                  subtitle: Text(theme.description),
+                  trailing: widget.themeId == theme.id
+                      ? const Icon(Icons.check_circle_rounded)
+                      : null,
+                  onTap: () {
+                    widget.onSelectTheme(theme.id);
+                    Navigator.pop(dialogContext);
+                  },
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPlayerToolbar(ColorScheme colors) {
     return Material(
       color: colors.surfaceContainerHighest,
@@ -1710,12 +1802,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
-              IconButton(
-                tooltip: widget.isDark ? 'تم روشن' : 'تم تاریک',
-                onPressed: widget.onToggleTheme,
-                icon: Icon(
-                  widget.isDark ? Icons.light_mode : Icons.dark_mode,
-                  size: 24,
+              Tooltip(
+                message: 'لمس کوتاه: تغییر شب و روز • نگه‌داشتن ۳ ثانیه: انتخاب تم',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: _onThemeButtonDown,
+                  onTapUp: _onThemeButtonUp,
+                  onTapCancel: _onThemeButtonCancel,
+                  child: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(
+                      child: Icon(
+                        widget.isDark ? Icons.light_mode : Icons.dark_mode,
+                        size: 24,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               PopupMenuButton<String>(
