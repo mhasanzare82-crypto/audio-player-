@@ -62,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _volume = 1;
   double _smartVolume = 1;
   bool _showSmartVolumeSlider = false;
+  double _crossfadePosition = 0.5;
+  bool _showCrossfadePanel = false;
   final Map<String, List<VolumeRange>> _volumeRangesByTrack = {};
   double? _lastAppliedVolume;
   late final TabController _tabController;
@@ -158,7 +160,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final preferences = await SharedPreferences.getInstance();
       final savedSmartVolume = preferences.getDouble('smart_topic_volume_v1') ?? 1.0;
       _smartVolume = savedSmartVolume.clamp(0.0, 1.0).toDouble();
-      await _smartPlayer.setVolume(_smartVolume);
+      final savedCrossfade = preferences.getDouble('audio_crossfade_position_v1') ?? 0.5;
+      _crossfadePosition = savedCrossfade.clamp(0.0, 1.0).toDouble();
+      await _applySmartEffectiveVolume();
       for (final key in preferences.getKeys().where(
         (key) => key.startsWith('volume_ranges_v1_'),
       )) {
@@ -512,13 +516,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ? const <VolumeRange>[]
         : (_volumeRangesByTrack[base64Url.encode(utf8.encode(trackPath))] ??
             const <VolumeRange>[]);
-    final effective = scheduledVolumeAt(ranges, positionMs, _volume);
+    final scheduled = scheduledVolumeAt(ranges, positionMs, _volume);
+    final effective = scheduled * (1.0 - _crossfadePosition);
     if (_lastAppliedVolume != null &&
         (effective - _lastAppliedVolume!).abs() < 0.0001) {
       return;
     }
     _lastAppliedVolume = effective;
     await _player.setVolume(effective);
+  }
+
+  Future<void> _applySmartEffectiveVolume() async {
+    final effective = (_smartVolume * _crossfadePosition).clamp(0.0, 1.0).toDouble();
+    await _smartPlayer.setVolume(effective);
+  }
+
+  Future<void> _setCrossfadePosition(double value) async {
+    final normalized = value.clamp(0.0, 1.0).toDouble();
+    if (mounted) setState(() => _crossfadePosition = normalized);
+    _lastAppliedVolume = null;
+    await Future.wait([
+      _applyEffectiveVolume(),
+      _applySmartEffectiveVolume(),
+    ]);
+  }
+
+  Future<void> _saveCrossfadePosition(double value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setDouble('audio_crossfade_position_v1', value);
   }
 
   Future<void> _setPlayerVolume(double value) async {
@@ -1011,7 +1036,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _setSmartPlayerVolume(double value) async {
     final normalized = value.clamp(0.0, 1.0).toDouble();
     if (mounted) setState(() => _smartVolume = normalized);
-    await _smartPlayer.setVolume(normalized);
+    await _applySmartEffectiveVolume();
     final preferences = await SharedPreferences.getInstance();
     await preferences.setDouble('smart_topic_volume_v1', normalized);
   }
@@ -1908,7 +1933,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     label: '${(_smartVolume * 100).round()}٪',
                     onChanged: (value) {
                       setState(() => _smartVolume = value);
-                      unawaited(_smartPlayer.setVolume(value));
+                      unawaited(_applySmartEffectiveVolume());
                     },
                     onChangeEnd: (value) async {
                       await _setSmartPlayerVolume(value);
@@ -2595,8 +2620,68 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
+                      IconButton(
+                        tooltip: 'ترکیب صدای دو پلیر',
+                        onPressed: () => setState(
+                          () => _showCrossfadePanel = !_showCrossfadePanel,
+                        ),
+                        icon: Icon(
+                          Icons.tune_rounded,
+                          color: _showCrossfadePanel ? colors.primary : null,
+                        ),
+                      ),
                     ],
                   ),
+                  if (_showCrossfadePanel)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(10, 2, 10, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'ترکیب صدای پلیرها',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Directionality(
+                            textDirection: TextDirection.ltr,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'پلیر اصلی ${((1 - _crossfadePosition) * 100).round()}٪',
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
+                                Text(
+                                  'پلیر هوشمند ${(_crossfadePosition * 100).round()}٪',
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Directionality(
+                            textDirection: TextDirection.ltr,
+                            child: Slider(
+                              value: _crossfadePosition,
+                              min: 0,
+                              max: 1,
+                              divisions: 100,
+                              label: 'اصلی ${((1 - _crossfadePosition) * 100).round()}٪ | هوشمند ${(_crossfadePosition * 100).round()}٪',
+                              onChanged: (value) {
+                                unawaited(_setCrossfadePosition(value));
+                              },
+                              onChangeEnd: (value) async {
+                                await _saveCrossfadePosition(value);
+                                if (mounted) {
+                                  setState(() => _showCrossfadePanel = false);
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
               StreamBuilder<Duration>(
