@@ -689,11 +689,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _bookmarks
           ..clear()
           ..addAll(updatedBookmarks);
-        _selectedSmartTopic ??= bookmark.topic;
       });
-      await _saveSmartSettings();
       _showMessage(
-        'نشانک با موضوع «${bookmark.topic}» در ${_formatDuration(position)} ذخیره شد.',
+        'نشانک معمولی در ${_formatDuration(position)} ذخیره شد. این نشانک وارد پخش هوشمند نمی‌شود.',
       );
     } catch (error) {
       _showMessage('ذخیره نشانک ناموفق بود: $error');
