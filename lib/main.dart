@@ -16,7 +16,18 @@ class AudioPlayerApp extends StatefulWidget {
 }
 
 class _AudioPlayerAppState extends State<AudioPlayerApp> {
-  ThemeMode _themeMode = ThemeMode.dark;
+  bool _isDark = true;
+  String _selectedTheme = 'teal';
+
+  static const Map<String, Color> _themeSeeds = {
+    'teal': Color(0xFF16A6A0),
+    'blue': Color(0xFF2878D0),
+    'purple': Color(0xFF8764D8),
+    'green': Color(0xFF39865A),
+    'amber': Color(0xFFD28A22),
+    'rose': Color(0xFFC65D78),
+    'slate': Color(0xFF718096),
+  };
 
   @override
   void initState() {
@@ -28,53 +39,62 @@ class _AudioPlayerAppState extends State<AudioPlayerApp> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _themeMode = prefs.getBool('is_dark_theme') ?? true
-          ? ThemeMode.dark
-          : ThemeMode.light;
+      _isDark = prefs.getBool('is_dark_theme') ?? true;
+      _selectedTheme = _themeSeeds.containsKey(
+        prefs.getString('selected_theme_v1'),
+      )
+          ? prefs.getString('selected_theme_v1')!
+          : 'teal';
     });
   }
 
   Future<void> _toggleTheme() async {
-    final next = _themeMode == ThemeMode.dark
-        ? ThemeMode.light
-        : ThemeMode.dark;
-    setState(() => _themeMode = next);
+    final next = !_isDark;
+    setState(() => _isDark = next);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_dark_theme', next == ThemeMode.dark);
+    await prefs.setBool('is_dark_theme', next);
+  }
+
+  Future<void> _selectTheme(String themeId) async {
+    if (!_themeSeeds.containsKey(themeId)) return;
+    setState(() => _selectedTheme = themeId);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selected_theme_v1', themeId);
   }
 
   ThemeData _theme(Brightness brightness) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF16A6A0),
+      seedColor: _themeSeeds[_selectedTheme]!,
       brightness: brightness,
     );
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: brightness == Brightness.dark
-          ? const Color(0xFF101514)
-          : const Color(0xFFF5F8F7),
+          ? Color.alphaBlend(
+              const Color(0xFF101820).withValues(alpha: 0.88),
+              scheme.surface,
+            )
+          : scheme.surface,
       appBarTheme: AppBarTheme(
         backgroundColor: brightness == Brightness.dark
-            ? const Color(0xFF101514)
-            : const Color(0xFFF5F8F7),
+            ? scheme.surface
+            : scheme.surface,
         centerTitle: true,
         elevation: 0,
       ),
       cardTheme: CardThemeData(
         elevation: 0,
         color: brightness == Brightness.dark
-            ? const Color(0xFF1B2422)
-            : Colors.white,
+            ? scheme.surfaceContainerHigh
+            : scheme.surfaceContainerLowest,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: brightness == Brightness.dark
-            ? const Color(0xFF1B2422)
-            : Colors.white,
+        fillColor: scheme.surfaceContainerHighest,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -90,10 +110,12 @@ class _AudioPlayerAppState extends State<AudioPlayerApp> {
       title: 'پلیر صوتی',
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
-      themeMode: _themeMode,
+      themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
       home: HomeScreen(
-        isDark: _themeMode == ThemeMode.dark,
+        isDark: _isDark,
+        themeId: _selectedTheme,
         onToggleTheme: _toggleTheme,
+        onSelectTheme: _selectTheme,
       ),
     );
   }
