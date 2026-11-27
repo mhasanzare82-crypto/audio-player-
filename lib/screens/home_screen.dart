@@ -70,7 +70,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, initialIndex: 3, vsync: this);
+    _tabController = TabController(length: 5, initialIndex: 3, vsync: this);
     _configureAudioSession();
     _player.positionStream.listen((position) {
       unawaited(_applyEffectiveVolume(position: position));
@@ -1121,6 +1121,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   _buildBookmarksTab(colors),
                   _buildPlaylistsTab(colors),
                   _buildLibraryTab(colors),
+                  _buildSmartTab(colors),
                 ],
               ),
             ),
@@ -1196,12 +1197,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                     text: 'کتابخانه',
                   ),
+                  Tab(
+                    height: 68,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.psychology_rounded, size: 26)),
+                    ),
+                    text: 'بخش هوشمند',
+                  ),
                 ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSmartTab(ColorScheme colors) {
+    return const Center(
+      child: Text('بخش هوشمند'),
     );
   }
 
