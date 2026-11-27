@@ -1968,20 +1968,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildLibraryTab(ColorScheme colors) {
     final hasLibraryItems = _libraryFolders.isNotEmpty || _tracks.isNotEmpty;
     final actions = Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
         IconButton.filledTonal(
           tooltip: 'انتخاب فایل صوتی',
           onPressed: _pickAudio,
-          icon: const Icon(Icons.audio_file_rounded, size: 28),
-          iconSize: 28,
+          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.audio_file_rounded, size: 20),
         ),
-        const SizedBox(width: 28),
+        const SizedBox(width: 3),
         IconButton.filledTonal(
           tooltip: 'انتخاب پوشه',
           onPressed: _openFolderManager,
-          icon: const Icon(Icons.create_new_folder_outlined, size: 28),
-          iconSize: 28,
+          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.create_new_folder_outlined, size: 20),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final folder in _libraryFolders)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.folder_rounded, size: 18, color: colors.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          folder['name'] ?? 'پوشه',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -1990,7 +2019,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return Center(child: actions);
     }
 
-    final itemCount = _libraryFolders.length + _tracks.length;
+    final itemCount = _tracks.length;
     return Column(
       children: [
         Padding(
@@ -2006,29 +2035,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: colors.outlineVariant.withValues(alpha: 0.55),
             ),
             itemBuilder: (context, index) {
-              if (index < _libraryFolders.length) {
-                final folder = _libraryFolders[index];
-                return ListTile(
-                  leading: Icon(
-                    Icons.folder_rounded,
-                    color: colors.primary,
-                  ),
-                  title: Text(
-                    folder['name'] ?? 'پوشه',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textDirection: TextDirection.rtl,
-                  ),
-                  subtitle: const Text('پوشه کتابخانه'),
-                  trailing: IconButton(
-                    tooltip: 'حذف پوشه از کتابخانه',
-                    onPressed: () => _removeLibraryFolder(index),
-                    icon: const Icon(Icons.delete_outline_rounded),
-                  ),
-                );
-              }
-
-              final trackIndex = index - _libraryFolders.length;
+              final trackIndex = index;
               final track = _tracks[trackIndex];
               final isCurrent = _currentIndex == trackIndex;
               return ListTile(
@@ -2045,7 +2052,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 title: _MarqueeText(
                   text: track.title,
-                  style: const TextStyle(fontSize: 8),
+                  style: const TextStyle(fontSize: 14),
                   gap: 28,
                 ),
                 onTap: () => _playTrack(trackIndex),
