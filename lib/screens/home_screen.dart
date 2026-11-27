@@ -2334,7 +2334,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final usableWidth =
-                              (constraints.maxWidth - 32).clamp(0.0, double.infinity);
+                              (constraints.maxWidth - 32).clamp(0.0, double.infinity).toDouble();
                           return Stack(
                             children: [
                               Slider(
@@ -2349,9 +2349,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               if (max > 0)
                                 ...trackRanges.expand((bookmark) {
                                   final startFraction =
-                                      (bookmark.positionMs / max).clamp(0.0, 1.0);
+                                      (bookmark.positionMs / max).clamp(0.0, 1.0).toDouble();
                                   final endFraction =
-                                      (bookmark.endPositionMs! / max).clamp(0.0, 1.0);
+                                      (bookmark.endPositionMs! / max).clamp(0.0, 1.0).toDouble();
                                   return <Widget>[
                                     PositionedDirectional(
                                       start: 16 + usableWidth * startFraction - 1.5,
