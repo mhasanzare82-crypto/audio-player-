@@ -2322,16 +2322,66 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       .toDouble()
                       .clamp(0.0, max > 0 ? max : 1.0)
                       .toDouble();
+                  final trackRanges = _bookmarks
+                      .where((bookmark) =>
+                          bookmark.isTopicRange &&
+                          bookmark.audioPath == track?.path &&
+                          bookmark.endPositionMs != null &&
+                          bookmark.endPositionMs! > bookmark.positionMs)
+                      .toList();
                   return Column(
                     children: [
-                      Slider(
-                        value: value,
-                        max: max > 0 ? max : 1,
-                        onChanged: track == null
-                            ? null
-                            : (next) => _player.seek(
-                                  Duration(milliseconds: next.round()),
-                                ),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final usableWidth =
+                              (constraints.maxWidth - 32).clamp(0.0, double.infinity);
+                          return Stack(
+                            children: [
+                              Slider(
+                                value: value,
+                                max: max > 0 ? max : 1,
+                                onChanged: track == null
+                                    ? null
+                                    : (next) => _player.seek(
+                                          Duration(milliseconds: next.round()),
+                                        ),
+                              ),
+                              if (max > 0)
+                                ...trackRanges.expand((bookmark) {
+                                  final startFraction =
+                                      (bookmark.positionMs / max).clamp(0.0, 1.0);
+                                  final endFraction =
+                                      (bookmark.endPositionMs! / max).clamp(0.0, 1.0);
+                                  return <Widget>[
+                                    PositionedDirectional(
+                                      start: 16 + usableWidth * startFraction - 1.5,
+                                      top: 16,
+                                      child: Container(
+                                        width: 3,
+                                        height: 16,
+                                        decoration: BoxDecoration(
+                                          color: colors.tertiary,
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
+                                      ),
+                                    ),
+                                    PositionedDirectional(
+                                      start: 16 + usableWidth * endFraction - 1.5,
+                                      top: 16,
+                                      child: Container(
+                                        width: 3,
+                                        height: 16,
+                                        decoration: BoxDecoration(
+                                          color: colors.primary,
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
+                                      ),
+                                    ),
+                                  ];
+                                }),
+                            ],
+                          );
+                        },
                       ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
