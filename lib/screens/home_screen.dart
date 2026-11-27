@@ -2069,6 +2069,68 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
+        const SizedBox(height: 4),
+        if (_showSmartSeekSlider)
+          StreamBuilder<Duration>(
+          stream: _smartPlayer.positionStream,
+          initialData: Duration.zero,
+          builder: (context, positionSnapshot) {
+            return StreamBuilder<Duration?>(
+              stream: _smartPlayer.durationStream,
+              builder: (context, durationSnapshot) {
+                final position = positionSnapshot.data ?? Duration.zero;
+                final duration = durationSnapshot.data ?? Duration.zero;
+                final max = duration.inMilliseconds.toDouble();
+                final currentMs = _isSmartSeeking
+                    ? _smartSeekPreviewMs
+                    : position.inMilliseconds.toDouble();
+                final safeMax = max > 0 ? max : 1.0;
+                final sliderValue = currentMs.clamp(0.0, safeMax).toDouble();
+                final displayPosition = Duration(
+                  milliseconds: sliderValue.round(),
+                );
+                return Column(
+                  children: [
+                    Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Slider(
+                        value: sliderValue,
+                        min: 0,
+                        max: safeMax,
+                        onChanged: max <= 0
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _isSmartSeeking = true;
+                                  _smartSeekPreviewMs = value;
+                                });
+                              },
+                        onChangeEnd: max <= 0
+                            ? null
+                            : (value) async {
+                                await _smartPlayer.seek(
+                                  Duration(milliseconds: value.round()),
+                                );
+                                if (mounted) {
+                                  setState(() => _isSmartSeeking = false);
+                                }
+                              },
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_formatDuration(displayPosition)),
+                        Text(_formatDuration(duration)),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
         const SizedBox(height: 8),
         if (_smartQueueBookmarks.isNotEmpty)
           StreamBuilder<int?>(
@@ -2185,67 +2247,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
             ),
           ),
-        if (_showSmartSeekSlider)
-        StreamBuilder<Duration>(
-          stream: _smartPlayer.positionStream,
-          initialData: Duration.zero,
-          builder: (context, positionSnapshot) {
-            return StreamBuilder<Duration?>(
-              stream: _smartPlayer.durationStream,
-              builder: (context, durationSnapshot) {
-                final position = positionSnapshot.data ?? Duration.zero;
-                final duration = durationSnapshot.data ?? Duration.zero;
-                final max = duration.inMilliseconds.toDouble();
-                final currentMs = _isSmartSeeking
-                    ? _smartSeekPreviewMs
-                    : position.inMilliseconds.toDouble();
-                final safeMax = max > 0 ? max : 1.0;
-                final sliderValue = currentMs.clamp(0.0, safeMax).toDouble();
-                final displayPosition = Duration(
-                  milliseconds: sliderValue.round(),
-                );
-                return Column(
-                  children: [
-                    Directionality(
-                      textDirection: TextDirection.ltr,
-                      child: Slider(
-                        value: sliderValue,
-                        min: 0,
-                        max: safeMax,
-                        onChanged: max <= 0
-                            ? null
-                            : (value) {
-                                setState(() {
-                                  _isSmartSeeking = true;
-                                  _smartSeekPreviewMs = value;
-                                });
-                              },
-                        onChangeEnd: max <= 0
-                            ? null
-                            : (value) async {
-                                await _smartPlayer.seek(
-                                  Duration(milliseconds: value.round()),
-                                );
-                                if (mounted) {
-                                  setState(() => _isSmartSeeking = false);
-                                }
-                              },
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(_formatDuration(displayPosition)),
-                        Text(_formatDuration(duration)),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
+
       ],
     );
   }
