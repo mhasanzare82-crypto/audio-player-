@@ -1376,7 +1376,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textDirection: TextDirection.rtl,
-                  style: const TextStyle(fontSize: 10),
+                  style: const TextStyle(fontSize: 8),
                 ),
                 onTap: () => _playTrack(trackIndex),
                 trailing: PopupMenuButton<String>(
