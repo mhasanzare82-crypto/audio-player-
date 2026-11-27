@@ -76,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _selectedSmartTopic;
   String? _activeSmartTopic;
   bool _smartQueueReady = false;
+  late final AnimationController _smartTopicMarqueeController;
   String? _expandedPlaylistId;
   static const String _favoritesPlaylistId = 'audio_player_favorites_v1';
   static const String _favoritesPlaylistName = 'علاقه‌مندی‌ها';
@@ -89,6 +90,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, initialIndex: 3, vsync: this);
+    _smartTopicMarqueeController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..repeat();
     _configureAudioSession();
     _player.positionStream.listen((position) {
       unawaited(_applyEffectiveVolume(position: position));
@@ -1480,6 +1485,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _lyricsHoldTimer?.cancel();
     _themeHoldTimer?.cancel();
+    _smartTopicMarqueeController.dispose();
     _tabController.dispose();
     _player.dispose();
     unawaited(_smartPlayer.dispose());
@@ -1696,18 +1702,91 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 8),
+        Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            const Text(
+              'موضوع در حال پخش:',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final topicText = _activeSmartTopic ?? '—';
+                  final textPainter = TextPainter(
+                    text: TextSpan(
+                      text: topicText,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    textDirection: Directionality.of(context),
+                    maxLines: 1,
+                  )..layout();
+                  final textWidth = textPainter.width;
+                  final viewportWidth = constraints.maxWidth;
+                  if (textWidth <= viewportWidth) {
+                    return Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        topicText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  }
+                  return ClipRect(
+                    child: SizedBox(
+                      height: 22,
+                      child: AnimatedBuilder(
+                        animation: _smartTopicMarqueeController,
+                        builder: (context, child) {
+                          final travel = viewportWidth + textWidth;
+                          final offset = viewportWidth -
+                              (_smartTopicMarqueeController.value * travel);
+                          return Transform.translate(
+                            offset: Offset(offset, 0),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: SizedBox(
+                          width: textWidth,
+                          child: Text(
+                            topicText,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colors.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
         if (topics.isEmpty)
           const ListTile(
             leading: Icon(Icons.info_outline_rounded),
             title: Text('هنوز موضوعی ثبت نشده است.'),
             subtitle: Text('در نوار پخش، با دکمه نشانک موضوعی ابتدا و انتهای هر موضوع را ثبت کن.'),
-          ),
-        if (_activeSmartTopic != null)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.graphic_eq_rounded),
-            title: Text('موضوع در حال پخش: $_activeSmartTopic'),
           ),
         Row(
           children: [
