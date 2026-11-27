@@ -1844,7 +1844,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     final isActive = index == activeIndex;
                     final endMs = bookmark.endPositionMs ?? bookmark.positionMs;
                     final duration = Duration(
-                      milliseconds: (endMs - bookmark.positionMs).clamp(0, 1 << 31),
+                      milliseconds: (endMs - bookmark.positionMs).clamp(0, 1 << 31).toInt(),
                     );
                     return Container(
                       constraints: const BoxConstraints(minHeight: 42),
