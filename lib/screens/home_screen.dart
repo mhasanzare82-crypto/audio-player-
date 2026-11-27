@@ -60,6 +60,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   LoopMode _loopMode = LoopMode.off;
   double _speed = 1;
   double _volume = 1;
+  double _smartVolume = 1;
+  bool _showSmartVolumeSlider = false;
   final Map<String, List<VolumeRange>> _volumeRangesByTrack = {};
   double? _lastAppliedVolume;
   late final TabController _tabController;
@@ -152,6 +154,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       final savedVolume = await _store.loadVolume();
       final preferences = await SharedPreferences.getInstance();
+      final savedSmartVolume = preferences.getDouble('smart_topic_volume_v1') ?? 1.0;
+      _smartVolume = savedSmartVolume.clamp(0.0, 1.0).toDouble();
+      await _smartPlayer.setVolume(_smartVolume);
       for (final key in preferences.getKeys().where(
         (key) => key.startsWith('volume_ranges_v1_'),
       )) {
@@ -1001,6 +1006,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _setSmartPlayerVolume(double value) async {
+    final normalized = value.clamp(0.0, 1.0).toDouble();
+    if (mounted) setState(() => _smartVolume = normalized);
+    await _smartPlayer.setVolume(normalized);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setDouble('smart_topic_volume_v1', normalized);
+  }
+
   Future<void> _toggleSmartPlayback() async {
     if (_smartPlayer.playing) {
       await _smartPlayer.pause();
@@ -1831,8 +1844,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               onPressed: _stopSmartPlayback,
               icon: const Icon(Icons.stop_rounded),
             ),
+            IconButton.filledTonal(
+              tooltip: 'تنظیم صدای پلیر موضوعی',
+              onPressed: () => setState(
+                () => _showSmartVolumeSlider = !_showSmartVolumeSlider,
+              ),
+              icon: Icon(
+                _smartVolume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+              ),
+            ),
           ],
         ),
+        if (_showSmartVolumeSlider)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 8, end: 8, top: 2),
+            child: Row(
+              children: [
+                const Icon(Icons.volume_down_rounded, size: 18),
+                Expanded(
+                  child: Slider(
+                    value: _smartVolume,
+                    min: 0,
+                    max: 1,
+                    divisions: 100,
+                    label: '${(_smartVolume * 100).round()}٪',
+                    onChanged: (value) {
+                      setState(() => _smartVolume = value);
+                      unawaited(_smartPlayer.setVolume(value));
+                    },
+                    onChangeEnd: (value) async {
+                      await _setSmartPlayerVolume(value);
+                      if (mounted) setState(() => _showSmartVolumeSlider = false);
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 38,
+                  child: Text(
+                    '${(_smartVolume * 100).round()}٪',
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: 8),
         if (_smartQueueBookmarks.isNotEmpty)
           StreamBuilder<int?>(
