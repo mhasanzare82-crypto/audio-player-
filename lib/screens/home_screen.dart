@@ -1364,21 +1364,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final track = _tracks[trackIndex];
               final isCurrent = _currentIndex == trackIndex;
               return ListTile(
-                leading: Icon(
-                  isCurrent
-                      ? Icons.graphic_eq_rounded
-                      : Icons.audio_file_rounded,
-                  color: isCurrent ? colors.primary : colors.onSurfaceVariant,
+                dense: true,
+                tileColor: isCurrent
+                    ? colors.primary.withValues(alpha: 0.10)
+                    : null,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 title: Text(
                   track.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textDirection: TextDirection.rtl,
-                  style: const TextStyle(fontSize: 12),
-                ),
-                subtitle: Text(
-                  isCurrent ? 'در حال پخش' : 'فایل صوتی',
                   style: const TextStyle(fontSize: 10),
                 ),
                 onTap: () => _playTrack(trackIndex),
