@@ -965,15 +965,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: ListTile(
             leading: Icon(Icons.bookmark_rounded, color: colors.primary),
             title: Text(
-              bookmark.audioTitle,
+              bookmark.title.isEmpty ? bookmark.audioTitle : bookmark.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
-              '${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  $dateLabel',
+              '${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}  •  $dateLabel',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-            trailing: const Icon(Icons.play_circle_outline_rounded),
+            trailing: PopupMenuButton<String>(
+              tooltip: 'مدیریت نشانک',
+              onSelected: (value) {
+                if (value == 'edit') _editBookmark(bookmark);
+                if (value == 'delete') _deleteBookmark(bookmark);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('ویرایش عنوان و موضوع')),
+                PopupMenuItem(value: 'delete', child: Text('حذف نشانک')),
+              ],
+            ),
             onTap: () => _playBookmark(bookmark),
           ),
         );
