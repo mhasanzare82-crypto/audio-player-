@@ -1365,28 +1365,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final isCurrent = _currentIndex == trackIndex;
               return ListTile(
                 dense: true,
+                visualDensity: const VisualDensity(vertical: -4),
+                minVerticalPadding: 0,
+                minTileHeight: 30,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                 tileColor: isCurrent
                     ? colors.primary.withValues(alpha: 0.10)
                     : null,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                title: Text(
-                  track.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textDirection: TextDirection.rtl,
+                title: _MarqueeText(
+                  text: track.title,
                   style: const TextStyle(fontSize: 8),
+                  gap: 28,
                 ),
                 onTap: () => _playTrack(trackIndex),
                 trailing: PopupMenuButton<String>(
                   tooltip: 'گزینه‌های فایل صوتی',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 28,
+                    height: 28,
                   ),
-                  iconSize: 19,
+                  iconSize: 17,
                   onSelected: (action) {
                     if (action == 'play') {
                       _playTrack(trackIndex);
