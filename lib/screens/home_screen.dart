@@ -67,6 +67,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
   Timer? _themeHoldTimer;
+  Timer? _messageTimer;
+  int _messageGeneration = 0;
   bool _themeLongPressTriggered = false;
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
@@ -1510,15 +1512,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    final messenger = ScaffoldMessenger.of(context);
+    _messageTimer?.cancel();
+    final generation = ++_messageGeneration;
+    messenger
+      ..hideCurrentMaterialBanner()
+      ..showMaterialBanner(
+        MaterialBanner(
+          padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 8, 8),
+          leading: const Icon(Icons.info_outline_rounded),
+          content: Dismissible(
+            key: ValueKey('app-message-$generation'),
+            direction: DismissDirection.horizontal,
+            onDismissed: (_) {
+              _messageTimer?.cancel();
+              messenger.hideCurrentMaterialBanner();
+            },
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(message),
+            ),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'بستن پیام',
+              visualDensity: VisualDensity.compact,
+              onPressed: () {
+                _messageTimer?.cancel();
+                messenger.hideCurrentMaterialBanner();
+              },
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ],
+        ),
+      );
+    _messageTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted || generation != _messageGeneration) return;
+      messenger.hideCurrentMaterialBanner();
+    });
   }
 
   @override
   void dispose() {
     _lyricsHoldTimer?.cancel();
     _themeHoldTimer?.cancel();
+    _messageTimer?.cancel();
     _smartTopicMarqueeController.dispose();
     _tabController.dispose();
     _player.dispose();
