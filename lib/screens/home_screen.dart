@@ -2267,23 +2267,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   itemBuilder: (context) => [
                     const PopupMenuItem<String>(
                       value: 'play',
-                      child: Row(
-                        children: [
-                          Icon(Icons.play_arrow_rounded, size: 19),
-                          SizedBox(width: 10),
-                          Text('پخش'),
-                        ],
-                      ),
+                      height: 40,
+                      child: Text('پخش'),
                     ),
                     const PopupMenuItem<String>(
                       value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete_outline_rounded, size: 19),
-                          SizedBox(width: 10),
-                          Text('حذف'),
-                        ],
-                      ),
+                      height: 40,
+                      child: Text('حذف'),
                     ),
                   ],
                 ),
