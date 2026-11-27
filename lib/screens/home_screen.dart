@@ -1607,14 +1607,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: DropdownButtonFormField<String>(
                 value: _smartTopicMode,
                 isExpanded: true,
+                style: const TextStyle(fontSize: 12),
                 decoration: const InputDecoration(
                   labelText: 'انتخاب موضوع',
+                  labelStyle: TextStyle(fontSize: 11),
                   border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 ),
                 items: const [
-                  DropdownMenuItem(value: 'manual', child: Text('انتخاب موضوع توسط من')),
-                  DropdownMenuItem(value: 'random', child: Text('انتخاب موضوع تصادفی')),
+                  DropdownMenuItem(
+                    value: 'manual',
+                    height: 38,
+                    child: Text('انتخاب موضوع توسط من', style: TextStyle(fontSize: 12)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'random',
+                    height: 38,
+                    child: Text('انتخاب موضوع تصادفی', style: TextStyle(fontSize: 12)),
+                  ),
                 ],
                 onChanged: (value) async {
                   if (value == null) return;
@@ -1656,14 +1667,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: DropdownButtonFormField<String>(
                 value: _smartOrderMode,
                 isExpanded: true,
+                style: const TextStyle(fontSize: 12),
                 decoration: const InputDecoration(
                   labelText: 'ترتیب پخش نشانک‌ها',
+                  labelStyle: TextStyle(fontSize: 11),
                   border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 ),
                 items: const [
-                  DropdownMenuItem(value: 'sequential', child: Text('به ترتیب ثبت')),
-                  DropdownMenuItem(value: 'random', child: Text('به‌صورت تصادفی')),
+                  DropdownMenuItem(
+                    value: 'sequential',
+                    height: 38,
+                    child: Text('به ترتیب ثبت', style: TextStyle(fontSize: 12)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'random',
+                    height: 38,
+                    child: Text('به‌صورت تصادفی', style: TextStyle(fontSize: 12)),
+                  ),
                 ],
                 onChanged: (value) async {
                   if (value == null) return;
