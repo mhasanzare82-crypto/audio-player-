@@ -352,12 +352,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         if (!await source.exists() || !existingPaths.add(source.absolute.path)) {
           continue;
         }
+        final dotIndex = item.name.lastIndexOf('.');
+        final title = dotIndex > 0
+            ? item.name.substring(0, dotIndex)
+            : item.name;
+        added.add(AudioTrack(path: source.absolute.path, title: title));
+      }
 
-        // Keep the selected source file in place. This lets rename operations
-        // update the actual filename visible in the device file manager.
-        added.add(AudioTrack(
-          path: source.absolute.path,
-          title: item.name.replaceFirst(RegExp(r'\.[^.]+ {
+      if (added.isEmpty) {
         _showMessage('فایل قابل استفاده‌ای انتخاب نشد.');
         return;
       }
@@ -708,8 +710,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         throw StateError('مسیر جدید فایل از سیستم دریافت نشد.');
       }
       final oldPath = track.path;
-      final displayTitle = (renamed['name'] ?? newTitle)
-          .replaceFirst(RegExp(r'\.[^.]+
+      final renamedName = renamed['name'] ?? newTitle;
+      final dotIndex = renamedName.lastIndexOf('.');
+      final displayTitle = dotIndex > 0
+          ? renamedName.substring(0, dotIndex)
+          : renamedName;
+      final oldIndex = _tracks.indexWhere((item) => item.path == oldPath);
+      if (oldIndex < 0) return;
+      _tracks[oldIndex] = AudioTrack(path: newPath, title: displayTitle);
       for (var i = 0; i < _bookmarks.length; i++) {
         final bookmark = _bookmarks[i];
         if (bookmark.audioPath != oldPath) continue;
