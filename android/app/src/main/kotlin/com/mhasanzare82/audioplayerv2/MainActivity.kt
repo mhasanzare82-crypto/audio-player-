@@ -4,6 +4,12 @@ import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
@@ -16,6 +22,11 @@ class MainActivity : FlutterActivity() {
     private val requestFolder = 4107
     private var pendingFolderResult: MethodChannel.Result? = null
     private var scheduleChannel: MethodChannel? = null
+    private var mixerChannel: MethodChannel? = null
+    private var pendingMixerOpen = false
+    private val mixerNotificationId = 7402
+    private val mixerNotificationChannelId = "audio_mixer_controls"
+    private val notificationPermissionRequest = 7403
     private var stopReceiverRegistered = false
     private val scheduledStopReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -29,6 +40,29 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "com.mhasanzare82.audioplayer/scheduled_playback"
         )
+        mixerChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.mhasanzare82.audioplayer/mixer_notification"
+        )
+        mixerChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "show" -> {
+                    showMixerNotification()
+                    result.success(true)
+                }
+                "hide" -> {
+                    (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                        .cancel(mixerNotificationId)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        if (pendingMixerOpen || intent?.getBooleanExtra("open_mixer_panel", false) == true) {
+            pendingMixerOpen = false
+            intent?.removeExtra("open_mixer_panel")
+            mixerChannel?.invokeMethod("openMixerPanel", null)
+        }
         scheduleChannel?.setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
@@ -85,6 +119,88 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("open_mixer_panel", false)) {
+            intent.removeExtra("open_mixer_panel")
+            dispatchMixerOpen()
+        }
+    }
+
+    private fun dispatchMixerOpen() {
+        val channel = mixerChannel
+        if (channel == null) {
+            pendingMixerOpen = true
+        } else {
+            channel.invokeMethod("openMixerPanel", null)
+        }
+    }
+
+    private fun showMixerNotification() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                notificationPermissionRequest
+            )
+            return
+        }
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= 26) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    mixerNotificationChannelId,
+                    "کنترل‌های پلیر صوتی",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply { description = "دسترسی سریع به کنترل‌های ترکیب و پخش صدا" }
+            )
+        }
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("open_mixer_panel", true)
+        }
+        val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or
+            if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0
+        val openPendingIntent = PendingIntent.getActivity(
+            this, mixerNotificationId, openIntent, pendingFlags
+        )
+        val builder = if (Build.VERSION.SDK_INT >= 26) {
+            Notification.Builder(this, mixerNotificationChannelId)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val notification = builder
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle("پلیر صوتی فعال است")
+            .setContentText("برای نمایش چهار کنترل صدا لمس کن")
+            .setContentIntent(openPendingIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .addAction(
+                android.R.drawable.ic_menu_manage,
+                "بازکردن کنترل‌ها",
+                openPendingIntent
+            )
+            .build()
+        manager.notify(mixerNotificationId, notification)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == notificationPermissionRequest &&
+            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        ) {
+            showMixerNotification()
+        }
     }
 
     override fun onDestroy() {
