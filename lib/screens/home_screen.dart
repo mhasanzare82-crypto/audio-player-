@@ -3193,6 +3193,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       IconButton(
+                        tooltip: 'پخش هوشمند',
+                        onPressed: _toggleSmartPlayback,
+                        icon: StreamBuilder<bool>(
+                          stream: _smartPlayer.playingStream,
+                          initialData: _smartPlayer.playing,
+                          builder: (context, snapshot) => Icon(
+                            snapshot.data == true
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                          ),
+                        ),
+                      ),
+                      IconButton(
                         tooltip: 'تنظیم صدای پلیر',
                         onPressed: _showVolumeSettings,
                         icon: Icon(
