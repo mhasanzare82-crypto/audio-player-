@@ -1710,7 +1710,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       height: 32,
                       child: Center(child: Icon(Icons.psychology_rounded, size: 26)),
                     ),
-                    text: 'بخش هوشمند',
+                    text: 'پلیر گراند',
                   ),
                 ],
               ),
