@@ -56,6 +56,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _librarySearchOpen = false;
   String _librarySearchQuery = '';
   final List<Map<String, String>> _libraryFolders = [];
+  final Map<String, String> _trackFolderUris = {};
+  String? _activeLibraryFolderUri;
   Map<String, String> _lyrics = {};
   int _currentIndex = -1;
   bool _shuffle = false;
@@ -193,6 +195,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       await _applyEffectiveVolume();
       final saved = await _store.loadTracks();
       final savedFolders = await _store.loadFolders();
+      final savedTrackFolders = preferences.getString('library_track_folder_uris_v1');
+      if (savedTrackFolders != null) {
+        try {
+          _trackFolderUris
+            ..clear()
+            ..addAll(Map<String, String>.from(jsonDecode(savedTrackFolders) as Map));
+        } catch (error) {
+          debugPrint('Saved folder membership is invalid: $error');
+        }
+      }
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
       final savedPlaylists = await _store.loadPlaylists();
@@ -487,14 +499,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       }
       _showMessage('در حال اسکن پوشه‌ها...');
-      final found = await _folderService.scanFolders(
-        folders.map((folder) => folder['uri']!).toList(),
-      );
       final existing = _tracks.map((track) => track.path).toSet();
       final added = <AudioTrack>[];
       var duplicates = 0;
-      for (final item in found) {
+      var scannedCount = 0;
+      for (final folder in folders) {
+        final folderUri = folder['uri']!;
+        final found = await _folderService.scanFolders([folderUri]);
+        scannedCount += found.length;
+        for (final item in found) {
         final uri = item['uri']!;
+        _trackFolderUris[uri] = folderUri;
         if (!existing.add(uri)) {
           duplicates++;
           continue;
@@ -503,7 +518,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final dotIndex = name.lastIndexOf('.');
         final title = dotIndex > 0 ? name.substring(0, dotIndex) : name;
         added.add(AudioTrack(path: uri, title: title));
+        }
       }
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString('library_track_folder_uris_v1', jsonEncode(_trackFolderUris));
       if (added.isNotEmpty) {
         setState(() => _tracks.addAll(added));
         await _persistTracks();
@@ -511,7 +529,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
       _showMessage(
         'اسکن تمام شد: ${added.length} فایل جدید، '
-        '$duplicates فایل تکراری از ${found.length} فایل شناسایی‌شده.',
+        '$duplicates فایل تکراری از $scannedCount فایل شناسایی‌شده.',
       );
     } catch (error) {
       _showMessage('اسکن پوشه‌ها ناموفق بود: $error');
@@ -2448,21 +2466,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 8),
+                  child: ChoiceChip(
+                    label: const Text('همه'),
+                    selected: _activeLibraryFolderUri == null,
+                    onSelected: (_) => setState(() => _activeLibraryFolderUri = null),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
                 for (final folder in _libraryFolders)
                   Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 10),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.folder_rounded, size: 18, color: colors.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          folder['name'] ?? 'پوشه',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
+                    padding: const EdgeInsetsDirectional.only(end: 8),
+                    child: ChoiceChip(
+                      avatar: const Icon(Icons.folder_rounded, size: 16),
+                      label: Text(folder['name'] ?? 'پوشه'),
+                      selected: _activeLibraryFolderUri == folder['uri'],
+                      onSelected: (_) => setState(
+                        () => _activeLibraryFolderUri = folder['uri'],
+                      ),
+                      visualDensity: VisualDensity.compact,
                     ),
                   ),
               ],
@@ -2477,9 +2500,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     final query = _librarySearchQuery.toLowerCase();
-    final visibleTracks = query.isEmpty
+    final folderTracks = _activeLibraryFolderUri == null
         ? _tracks
         : _tracks.where((track) =>
+            _trackFolderUris[track.path] == _activeLibraryFolderUri).toList();
+    final visibleTracks = query.isEmpty
+        ? folderTracks
+        : folderTracks.where((track) =>
             track.title.toLowerCase().contains(query) ||
             track.path.toLowerCase().contains(query)).toList();
     final itemCount = visibleTracks.length;
@@ -2493,9 +2520,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: itemCount == 0
               ? Center(
                   child: Text(
-                    query.isEmpty
-                        ? 'فایلی در کتابخانه وجود ندارد.'
-                        : 'آهنگی با این عبارت پیدا نشد.',
+                    query.isNotEmpty
+                        ? 'آهنگی با این عبارت در این محدوده پیدا نشد.'
+                        : _activeLibraryFolderUri != null
+                            ? 'این پوشه آهنگ ثبت‌شده‌ای ندارد.'
+                            : 'فایلی در کتابخانه وجود ندارد.',
                     style: TextStyle(color: colors.onSurfaceVariant),
                   ),
                 )
