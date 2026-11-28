@@ -68,6 +68,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _showSmartVolumeSlider = false;
   double _crossfadePosition = 0.5;
   double _masterOutputVolume = 1.0;
+  bool _mainPausedByCrossfade = false;
+  bool _smartPausedByCrossfade = false;
+  Future<void> _crossfadePlaybackSync = Future<void>.value();
+  static const double _crossfadeZeroThreshold = 0.0001;
   bool _showCrossfadePanel = false;
   final Object _mixerTapRegionGroup = Object();
   bool _isSmartSeeking = false;
@@ -572,6 +576,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _applyEffectiveVolume(),
       _applySmartEffectiveVolume(),
     ]);
+    await _syncCrossfadePlayback();
+  }
+
+  Future<void> _syncCrossfadePlayback() {
+    _crossfadePlaybackSync = _crossfadePlaybackSync.then((_) async {
+      final mainHasShare = _crossfadePosition < 1.0 - _crossfadeZeroThreshold;
+      final smartHasShare = _crossfadePosition > _crossfadeZeroThreshold;
+
+      if (!mainHasShare) {
+        if (_player.playing) {
+          _mainPausedByCrossfade = true;
+          await _player.pause();
+        }
+      } else if (_mainPausedByCrossfade) {
+        _mainPausedByCrossfade = false;
+        await _player.play();
+      }
+
+      if (!smartHasShare) {
+        if (_smartPlayer.playing) {
+          _smartPausedByCrossfade = true;
+          await _smartPlayer.pause();
+        }
+      } else if (_smartPausedByCrossfade) {
+        _smartPausedByCrossfade = false;
+        await _smartPlayer.play();
+      }
+    }).catchError((Object error) {
+      debugPrint('Crossfade playback synchronization failed: $error');
+    });
+    return _crossfadePlaybackSync;
+  }
+
+  Future<void> _toggleMainPlayback() async {
+    _mainPausedByCrossfade = false;
+    if (_player.playing) {
+      await _player.pause();
+    } else {
+      await _player.play();
+      await _syncCrossfadePlayback();
+    }
   }
 
   Future<void> _saveCrossfadePosition(double value) async {
@@ -708,7 +753,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       initialIndex: oldIndex,
       initialPosition: Duration.zero,
     );
-    if (autoplay) await _player.play();
+    if (autoplay) {
+      _mainPausedByCrossfade = false;
+      await _player.play();
+      await _syncCrossfadePlayback();
+    }
   }
   Future<void> _playTrack(int index) async {
     if (index < 0 || index >= _tracks.length) return;
@@ -717,7 +766,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         await _replacePlaylist(autoplay: false);
       }
       await _player.seek(Duration.zero, index: index);
+      _mainPausedByCrossfade = false;
       await _player.play();
+      await _syncCrossfadePlayback();
     } catch (error) {
       _showMessage('پخش این فایل ممکن نشد: $error');
     }
@@ -1109,6 +1160,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     try {
+      _mainPausedByCrossfade = false;
       await _player.pause();
       await _smartPlayer.stop();
       await _smartPlayer.setAudioSources(
@@ -1124,7 +1176,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ..addAll(matching);
         _smartQueueReady = true;
       });
+      _smartPausedByCrossfade = false;
       await _smartPlayer.play();
+      await _syncCrossfadePlayback();
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -1154,7 +1208,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
     try {
       await _smartPlayer.seek(Duration.zero, index: targetIndex);
-      if (!_smartPlayer.playing) await _smartPlayer.play();
+      if (!_smartPlayer.playing) {
+        _smartPausedByCrossfade = false;
+        await _smartPlayer.play();
+        await _syncCrossfadePlayback();
+      }
       if (mounted) setState(() => _isSmartSeeking = false);
     } catch (error) {
       _showMessage('رفتن به مورد ${next ? 'بعدی' : 'قبلی'} ناموفق بود: $error');
@@ -1162,6 +1220,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _toggleSmartPlayback() async {
+    _smartPausedByCrossfade = false;
     if (_smartPlayer.playing) {
       await _smartPlayer.pause();
       return;
@@ -1169,6 +1228,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (_smartQueueReady &&
         _smartPlayer.processingState != ProcessingState.completed) {
       await _smartPlayer.play();
+      await _syncCrossfadePlayback();
       return;
     }
     await _startSmartPlayback();
@@ -1199,7 +1259,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
       final position = Duration(milliseconds: bookmark.positionMs);
       await _player.seek(position, index: trackIndex);
+      _mainPausedByCrossfade = false;
       await _player.play();
+      await _syncCrossfadePlayback();
     } catch (error) {
       _showMessage('پخش از نشانک ممکن نشد: $error');
     }
@@ -3089,7 +3151,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                           onPressed: track == null
                               ? null
-                              : () => playing ? _player.pause() : _player.play(),
+                              : _toggleMainPlayback,
                           child: busy
                               ? const SizedBox(
                                   width: 24,
