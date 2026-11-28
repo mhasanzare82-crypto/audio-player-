@@ -886,8 +886,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       await _store.saveBookmarks(updated);
       if (!mounted) return;
-      setState(() { _bookmarks..clear()..addAll(updated); });
-      _showMessage('کل فایل «${track.title}» به نشانک‌ها اضافه شد.');
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(updated);
+        _selectedSmartTopic = bookmark.topic;
+      });
+      await _saveSmartSettings();
+      _showMessage('کل فایل «${track.title}» با موضوع «${bookmark.topic}» به نشانک‌ها اضافه شد و برای پخش هوشمند انتخاب شد.');
     } catch (error) {
       _showMessage('ذخیره نشانک فایل ناموفق بود: $error');
     }
@@ -984,9 +990,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   List<String> get _availableSmartTopics {
     final topics = _bookmarks
-        .where((bookmark) => bookmark.isTopicRange &&
-            bookmark.endPositionMs != null &&
-            bookmark.endPositionMs! > bookmark.positionMs)
+        .where((bookmark) =>
+            bookmark.isFullTrack ||
+            (bookmark.isTopicRange &&
+                bookmark.endPositionMs != null &&
+                bookmark.endPositionMs! > bookmark.positionMs))
         .map((bookmark) => bookmark.topic.trim())
         .where((topic) => topic.isNotEmpty)
         .toSet()
@@ -1138,9 +1146,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     final matching = _bookmarks
         .where((bookmark) =>
-            bookmark.isTopicRange &&
-            bookmark.endPositionMs != null &&
-            bookmark.endPositionMs! > bookmark.positionMs &&
+            (bookmark.isFullTrack ||
+                (bookmark.isTopicRange &&
+                    bookmark.endPositionMs != null &&
+                    bookmark.endPositionMs! > bookmark.positionMs)) &&
             bookmark.topic.trim() == topic &&
             _tracks.any((track) => track.path == bookmark.audioPath))
         .toList();
@@ -1161,13 +1170,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final uri = parsed.scheme == 'content'
           ? parsed
           : Uri.file(bookmark.audioPath);
-      sources.add(
-        ClippingAudioSource(
-          child: AudioSource.uri(uri),
-          start: Duration(milliseconds: bookmark.positionMs),
-          end: Duration(milliseconds: bookmark.endPositionMs!),
-        ),
-      );
+      if (bookmark.isFullTrack) {
+        sources.add(AudioSource.uri(uri));
+      } else {
+        sources.add(
+          ClippingAudioSource(
+            child: AudioSource.uri(uri),
+            start: Duration(milliseconds: bookmark.positionMs),
+            end: Duration(milliseconds: bookmark.endPositionMs!),
+          ),
+        );
+      }
     }
 
     try {
@@ -1324,7 +1337,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           clipBehavior: Clip.antiAlias,
           child: ListTile(
             leading: Icon(
-              bookmark.isTopicRange
+              bookmark.isTopicRange || bookmark.isFullTrack
                   ? Icons.bookmark_added_rounded
                   : Icons.bookmark_rounded,
               color: colors.primary,
@@ -1338,7 +1351,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
             ),
             subtitle: Text(
-              '${bookmark.isTopicRange ? 'موضوع' : 'نشانک معمولی'}  •  ${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}${bookmark.isTopicRange && bookmark.endPositionMs != null ? ' تا ${_formatDuration(Duration(milliseconds: bookmark.endPositionMs!))}' : ''}  •  $dateLabel',
+              '${bookmark.isFullTrack ? 'فایل کامل' : bookmark.isTopicRange ? 'بازه موضوعی' : 'نشانک معمولی'}  •  ${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}${bookmark.isTopicRange && bookmark.endPositionMs != null ? ' تا ${_formatDuration(Duration(milliseconds: bookmark.endPositionMs!))}' : ''}  •  $dateLabel',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
@@ -2416,7 +2429,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           SizedBox(
                             width: 48,
                             child: Text(
-                              _formatDuration(duration),
+                              bookmark.isFullTrack ? 'کل فایل' : _formatDuration(duration),
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 11,
