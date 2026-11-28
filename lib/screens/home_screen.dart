@@ -1727,28 +1727,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       children: [
         Row(
+          textDirection: TextDirection.rtl,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
+              flex: 4,
               child: DropdownButtonFormField<String>(
                 value: _smartTopicMode,
                 isExpanded: true,
-                itemHeight: 38,
-                style: const TextStyle(fontSize: 12),
+                itemHeight: 32,
+                style: const TextStyle(fontSize: 11),
                 decoration: const InputDecoration(
-                  labelText: 'انتخاب موضوع',
-                  labelStyle: TextStyle(fontSize: 11),
+                  labelText: 'موضوع',
+                  labelStyle: TextStyle(fontSize: 10),
                   border: OutlineInputBorder(),
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 ),
                 items: const [
                   DropdownMenuItem(
                     value: 'manual',
-                    child: Text('انتخاب موضوع توسط من', style: TextStyle(fontSize: 12)),
+                    child: Text('انتخابی', style: TextStyle(fontSize: 11)),
                   ),
                   DropdownMenuItem(
                     value: 'random',
-                    child: Text('انتخاب موضوع تصادفی', style: TextStyle(fontSize: 12)),
+                    child: Text('تصادفی', style: TextStyle(fontSize: 11)),
                   ),
                 ],
                 onChanged: (value) async {
@@ -1786,28 +1789,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 },
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Expanded(
+              flex: 4,
               child: DropdownButtonFormField<String>(
                 value: _smartOrderMode,
                 isExpanded: true,
-                itemHeight: 38,
-                style: const TextStyle(fontSize: 12),
+                itemHeight: 32,
+                style: const TextStyle(fontSize: 11),
                 decoration: const InputDecoration(
-                  labelText: 'ترتیب پخش نشانک‌ها',
-                  labelStyle: TextStyle(fontSize: 11),
+                  labelText: 'پخش',
+                  labelStyle: TextStyle(fontSize: 10),
                   border: OutlineInputBorder(),
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 ),
                 items: const [
                   DropdownMenuItem(
                     value: 'sequential',
-                    child: Text('به ترتیب ثبت', style: TextStyle(fontSize: 12)),
+                    child: Text('ترتیبی', style: TextStyle(fontSize: 11)),
                   ),
                   DropdownMenuItem(
                     value: 'random',
-                    child: Text('به‌صورت تصادفی', style: TextStyle(fontSize: 12)),
+                    child: Text('تصادفی', style: TextStyle(fontSize: 11)),
                   ),
                 ],
                 onChanged: (value) async {
@@ -1817,84 +1821,78 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 },
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          textDirection: TextDirection.rtl,
-          children: [
-            const Text(
-              'موضوع در حال پخش:',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
             const SizedBox(width: 8),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final topicText = _activeSmartTopic ?? '—';
-                  final textPainter = TextPainter(
-                    text: TextSpan(
-                      text: topicText,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: colors.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    textDirection: Directionality.of(context),
+              flex: 5,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'موضوع در حال پخش',
                     maxLines: 1,
-                  )..layout();
-                  final textWidth = textPainter.width;
-                  final viewportWidth = constraints.maxWidth;
-                  if (textWidth <= viewportWidth) {
-                    return Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        topicText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 3),
+                  SizedBox(
+                    height: 20,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final topicText = _activeSmartTopic ?? 'موضوع...';
+                        final textStyle = TextStyle(
+                          fontSize: 12,
                           color: colors.primary,
                           fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    );
-                  }
-                  return ClipRect(
-                    child: SizedBox(
-                      height: 22,
-                      child: AnimatedBuilder(
-                        animation: _smartTopicMarqueeController,
-                        builder: (context, child) {
-                          final travel = viewportWidth + textWidth;
-                          final offset = viewportWidth -
-                              (_smartTopicMarqueeController.value * travel);
-                          return Transform.translate(
-                            offset: Offset(offset, 0),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: child,
+                        );
+                        final textPainter = TextPainter(
+                          text: TextSpan(text: topicText, style: textStyle),
+                          textDirection: Directionality.of(context),
+                          maxLines: 1,
+                        )..layout();
+                        final textWidth = textPainter.width;
+                        final viewportWidth = constraints.maxWidth;
+                        if (textWidth <= viewportWidth) {
+                          return Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              topicText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textStyle,
                             ),
                           );
-                        },
-                        child: SizedBox(
-                          width: textWidth,
-                          child: Text(
-                            topicText,
-                            maxLines: 1,
-                            softWrap: false,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: colors.primary,
-                              fontWeight: FontWeight.w600,
+                        }
+                        return ClipRect(
+                          child: AnimatedBuilder(
+                            animation: _smartTopicMarqueeController,
+                            builder: (context, child) {
+                              final travel = viewportWidth + textWidth;
+                              final offset = viewportWidth -
+                                  (_smartTopicMarqueeController.value * travel);
+                              return Transform.translate(
+                                offset: Offset(offset, 0),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: SizedBox(
+                              width: textWidth,
+                              child: Text(
+                                topicText,
+                                maxLines: 1,
+                                softWrap: false,
+                                style: textStyle,
+                              ),
                             ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             ),
           ],
