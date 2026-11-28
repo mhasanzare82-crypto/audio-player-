@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ui/compact-bottom-navigation, feature/player-toolbar-utilities, feature/library-content-list]
+    branches: [main, ui/compact-bottom-navigation, feature/player-toolbar-utilities, feature/library-content-list, feature/full-track-topic-bookmarks]
   workflow_dispatch:
 
 permissions:
