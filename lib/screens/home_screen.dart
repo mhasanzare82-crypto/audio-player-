@@ -896,8 +896,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _startFullTrackBookmarkHold() {
     _fullTrackBookmarkHoldTriggered = false;
     _fullTrackBookmarkHoldTimer?.cancel();
-    unawaited(MixerNotificationService.hide());
-    MixerNotificationService.clearOpenPanelHandler();
     _fullTrackBookmarkHoldTimer = Timer(const Duration(seconds: 2), () {
       _fullTrackBookmarkHoldTriggered = true;
       _addFullTrackBookmark();
@@ -1779,6 +1777,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _themeHoldTimer?.cancel();
     _messageTimer?.cancel();
     _fullTrackBookmarkHoldTimer?.cancel();
+    unawaited(MixerNotificationService.hide());
+    MixerNotificationService.clearOpenPanelHandler();
     _smartTopicMarqueeController.dispose();
     _tabController.dispose();
     _player.dispose();
