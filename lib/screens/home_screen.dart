@@ -3008,23 +3008,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           color: colors.primary,
                         ),
                       ),
-                      PopupMenuButton<double>(
-                        tooltip: 'سرعت پخش',
-                        initialValue: _speed,
-                        onSelected: (value) async {
-                          setState(() => _speed = value);
-                          await _player.setSpeed(value);
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () async {
+                          await showDialog<void>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const Text('سرعت پخش'),
+                              content: SizedBox(
+                                width: double.maxFinite,
+                                child: SingleChildScrollView(
+                                  child: Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 8,
+                                    runSpacing: 10,
+                                    children: List<double>.generate(
+                                      27,
+                                      (index) => 0.70 + (index * 0.05),
+                                    ).map((value) {
+                                      final selected = (_speed - value).abs() < 0.001;
+                                      return ChoiceChip(
+                                        label: Text('${value.toStringAsFixed(2)}x'),
+                                        selected: selected,
+                                        onSelected: (_) async {
+                                          setState(() => _speed = value);
+                                          await _player.setSpeed(value);
+                                          if (dialogContext.mounted) {
+                                            Navigator.of(dialogContext).pop();
+                                          }
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
                         },
-                        itemBuilder: (_) => <double>[
-                          0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
-                        ].map((value) => PopupMenuItem<double>(
-                              value: value,
-                              child: Text('${value}x'),
-                            )).toList(),
                         child: Padding(
                           padding: const EdgeInsets.all(8),
                           child: Text(
-                            '${_speed}x',
+                            '${_speed.toStringAsFixed(2)}x',
                             style: TextStyle(
                               color: colors.primary,
                               fontWeight: FontWeight.bold,
