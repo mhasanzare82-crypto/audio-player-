@@ -3192,24 +3192,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               : colors.onSurfaceVariant,
                         ),
                       ),
-                      TapRegion(
-                        groupId: _mixerTapRegionGroup,
-                        onTapOutside: (_) {
-                          if (_showCrossfadePanel && mounted) {
-                            setState(() => _showCrossfadePanel = false);
-                          }
-                        },
-                        child: IconButton(
-                          tooltip: 'تنظیم ترکیب و خروجی صدای برنامه',
-                          onPressed: () => setState(
-                            () => _showFloatingMixerPanel = !_showFloatingMixerPanel,
-                          ),
-                          icon: Icon(
-                            Icons.tune_rounded,
-                            color: _showCrossfadePanel ? colors.primary : null,
-                          ),
-                        ),
-                      ),
                       IconButton(
                         tooltip: 'تنظیم صدای پلیر',
                         onPressed: _showVolumeSettings,
@@ -3268,6 +3250,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'نمایش چهار اسلایدر کنترل پلیرها',
+                        onPressed: () => setState(
+                          () => _showFloatingMixerPanel = !_showFloatingMixerPanel,
+                        ),
+                        icon: Icon(
+                          Icons.tune_rounded,
+                          color: _showFloatingMixerPanel ? colors.primary : null,
                         ),
                       ),
                     ],
