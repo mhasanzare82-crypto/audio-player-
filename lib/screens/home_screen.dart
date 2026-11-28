@@ -2407,6 +2407,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 _smartVolume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
               ),
             ),
+            IconButton(
+              tooltip: 'ترکیب صدای پلیرها',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(
+                () => _showFloatingMixerPanel = !_showFloatingMixerPanel,
+              ),
+              icon: Icon(
+                Icons.tune_rounded,
+                color: _showFloatingMixerPanel ? colors.primary : null,
+              ),
+            ),
           ],
         ),
         if (_showSmartVolumeSlider)
@@ -3211,37 +3222,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           color: colors.primary,
                         ),
                       ),
-                      PopupMenuButton<double>(
-                        tooltip: 'سرعت پخش',
-                        initialValue: _speed,
-                        onSelected: (value) async {
-                          setState(() => _speed = value);
-                          await _player.setSpeed(value);
-                        },
-                        itemBuilder: (_) {
-                          final values = <double>{
-                            0.5,
-                            0.75,
-                            1.0,
-                            ...List<double>.generate(
-                              19,
-                              (index) => (110 + index * 5) / 100,
-                            ),
-                          }.toList()
-                            ..sort();
-                          return values
-                              .map(
-                                (value) => PopupMenuItem<double>(
-                                  value: value,
-                                  child: Text('${value.toStringAsFixed(2)}x'),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () async {
+                          await showDialog<void>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const Text('سرعت پخش'),
+                              content: SizedBox(
+                                width: double.maxFinite,
+                                child: SingleChildScrollView(
+                                  child: Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 8,
+                                    runSpacing: 10,
+                                    children: List<double>.generate(
+                                      27,
+                                      (index) => 0.70 + (index * 0.05),
+                                    ).map((value) {
+                                      final selected = (_speed - value).abs() < 0.001;
+                                      return ChoiceChip(
+                                        label: Text('${value.toStringAsFixed(2)}x'),
+                                        selected: selected,
+                                        onSelected: (_) async {
+                                          setState(() => _speed = value);
+                                          await _player.setSpeed(value);
+                                          if (dialogContext.mounted) {
+                                            Navigator.of(dialogContext).pop();
+                                          }
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
                                 ),
-                              )
-                              .toList();
+                              ),
+                            ),
+                          );
                         },
                         child: Padding(
                           padding: const EdgeInsets.all(8),
                           child: Text(
-                            '${_speed}x',
+                            '${_speed.toStringAsFixed(2)}x',
                             style: TextStyle(
                               color: colors.primary,
                               fontWeight: FontWeight.bold,
