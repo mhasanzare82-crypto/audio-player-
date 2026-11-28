@@ -1980,15 +1980,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     : Icons.volume_up_rounded,
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
             IconButton(
               tooltip: 'ترکیب صدای دو پلیر',
               visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 44),
               onPressed: () => setState(
                 () => _showCrossfadePanel = !_showCrossfadePanel,
               ),
