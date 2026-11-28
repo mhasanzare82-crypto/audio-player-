@@ -815,7 +815,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _startWholeTrackBookmarkHold() {
     _wholeTrackBookmarkHoldTimer?.cancel();
-    _wholeTrackBookmarkHoldTimer = Timer(const Duration(seconds: 2), () {
+    // Flutter's long-press recognizer starts after roughly 500 ms;
+    // the remaining 1.5 s makes the total hold time approximately 2 s.
+    _wholeTrackBookmarkHoldTimer = Timer(const Duration(milliseconds: 1500), () {
       _wholeTrackBookmarkHoldTimer = null;
       unawaited(_bookmarkWholeTrackAsTopicRange());
     });
