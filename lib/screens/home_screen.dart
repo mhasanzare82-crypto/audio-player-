@@ -20,6 +20,7 @@ import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 import '../services/scheduled_playback_service.dart';
 import 'volume_automation_screen.dart';
+import '../services/mixer_notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -53,7 +54,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final LibraryStore _store = LibraryStore();
   final FolderLibraryService _folderService = FolderLibraryService();
   final List<AudioTrack> _tracks = [];
+  bool _librarySearchOpen = false;
+  String _librarySearchQuery = '';
   final List<Map<String, String>> _libraryFolders = [];
+  final Map<String, String> _trackFolderUris = {};
+  String? _activeLibraryFolderUri;
   Map<String, String> _lyrics = {};
   int _currentIndex = -1;
   bool _shuffle = false;
@@ -62,6 +67,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _volume = 1;
   double _smartVolume = 1;
   bool _showSmartVolumeSlider = false;
+  double _crossfadePosition = 0.5;
+  double _masterOutputVolume = 1.0;
+  bool _mainPausedByCrossfade = false;
+  bool _smartPausedByCrossfade = false;
+  Future<void> _crossfadePlaybackSync = Future<void>.value();
+  static const double _crossfadeZeroThreshold = 0.0001;
+  bool _showCrossfadePanel = false;
+  bool _showFloatingMixerPanel = false;
+  final Object _mixerTapRegionGroup = Object();
+  bool _isSmartSeeking = false;
+  bool _showSmartSeekSlider = true;
+  double _smartSeekPreviewMs = 0;
   final Map<String, List<VolumeRange>> _volumeRangesByTrack = {};
   double? _lastAppliedVolume;
   late final TabController _tabController;
@@ -73,6 +90,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
   int? _pendingTopicStartMs;
+  Timer? _fullTrackBookmarkHoldTimer;
+  bool _fullTrackBookmarkHoldTriggered = false;
   String? _pendingTopicAudioPath;
   final List<AudioPlaylist> _playlists = [];
   String _smartTopicMode = 'manual';
@@ -100,10 +119,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 10),
     )..repeat();
     _configureAudioSession();
+    MixerNotificationService.setOpenPanelHandler(() {
+      if (mounted) setState(() => _showFloatingMixerPanel = true);
+    });
+    unawaited(MixerNotificationService.show());
+
     _player.positionStream.listen((position) {
       unawaited(_applyEffectiveVolume(position: position));
     });
     ScheduledPlaybackService.setStopHandler(() async {
+      _mainPausedByCrossfade = false;
       await _player.stop();
       _showMessage('پخش صوت طبق زمان‌بندی متوقف شد.');
     });
@@ -158,7 +183,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final preferences = await SharedPreferences.getInstance();
       final savedSmartVolume = preferences.getDouble('smart_topic_volume_v1') ?? 1.0;
       _smartVolume = savedSmartVolume.clamp(0.0, 1.0).toDouble();
-      await _smartPlayer.setVolume(_smartVolume);
+      final savedCrossfade = preferences.getDouble('audio_crossfade_position_v1') ?? 0.5;
+      _crossfadePosition = savedCrossfade.clamp(0.0, 1.0).toDouble();
+      final savedMasterOutput = preferences.getDouble('master_output_volume_v1') ?? 1.0;
+      _masterOutputVolume = savedMasterOutput.clamp(0.0, 1.0).toDouble();
+      await _applySmartEffectiveVolume();
       for (final key in preferences.getKeys().where(
         (key) => key.startsWith('volume_ranges_v1_'),
       )) {
@@ -180,6 +209,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       await _applyEffectiveVolume();
       final saved = await _store.loadTracks();
       final savedFolders = await _store.loadFolders();
+      final savedTrackFolders = preferences.getString('library_track_folder_uris_v1');
+      if (savedTrackFolders != null) {
+        try {
+          _trackFolderUris
+            ..clear()
+            ..addAll(Map<String, String>.from(jsonDecode(savedTrackFolders) as Map));
+        } catch (error) {
+          debugPrint('Saved folder membership is invalid: $error');
+        }
+      }
       final lyrics = await _store.loadLyrics();
       final savedBookmarks = await _store.loadBookmarks();
       final savedPlaylists = await _store.loadPlaylists();
@@ -318,6 +357,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
 
       if (_tracks.isEmpty) {
+        _mainPausedByCrossfade = false;
         await _player.stop();
       } else {
         await _replacePlaylist(autoplay: false);
@@ -474,14 +514,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       }
       _showMessage('در حال اسکن پوشه‌ها...');
-      final found = await _folderService.scanFolders(
-        folders.map((folder) => folder['uri']!).toList(),
-      );
       final existing = _tracks.map((track) => track.path).toSet();
       final added = <AudioTrack>[];
       var duplicates = 0;
-      for (final item in found) {
+      var scannedCount = 0;
+      for (final folder in folders) {
+        final folderUri = folder['uri']!;
+        final found = await _folderService.scanFolders([folderUri]);
+        scannedCount += found.length;
+        for (final item in found) {
         final uri = item['uri']!;
+        _trackFolderUris[uri] = folderUri;
         if (!existing.add(uri)) {
           duplicates++;
           continue;
@@ -490,7 +533,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final dotIndex = name.lastIndexOf('.');
         final title = dotIndex > 0 ? name.substring(0, dotIndex) : name;
         added.add(AudioTrack(path: uri, title: title));
+        }
       }
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString('library_track_folder_uris_v1', jsonEncode(_trackFolderUris));
       if (added.isNotEmpty) {
         setState(() => _tracks.addAll(added));
         await _persistTracks();
@@ -498,7 +544,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
       _showMessage(
         'اسکن تمام شد: ${added.length} فایل جدید، '
-        '$duplicates فایل تکراری از ${found.length} فایل شناسایی‌شده.',
+        '$duplicates فایل تکراری از $scannedCount فایل شناسایی‌شده.',
       );
     } catch (error) {
       _showMessage('اسکن پوشه‌ها ناموفق بود: $error');
@@ -512,13 +558,94 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ? const <VolumeRange>[]
         : (_volumeRangesByTrack[base64Url.encode(utf8.encode(trackPath))] ??
             const <VolumeRange>[]);
-    final effective = scheduledVolumeAt(ranges, positionMs, _volume);
+    final scheduled = scheduledVolumeAt(ranges, positionMs, _volume);
+    final effective = (scheduled * (1.0 - _crossfadePosition) * _masterOutputVolume)
+        .clamp(0.0, 1.0)
+        .toDouble();
     if (_lastAppliedVolume != null &&
         (effective - _lastAppliedVolume!).abs() < 0.0001) {
       return;
     }
     _lastAppliedVolume = effective;
     await _player.setVolume(effective);
+  }
+
+  Future<void> _applySmartEffectiveVolume() async {
+    final effective = (_smartVolume * _crossfadePosition * _masterOutputVolume)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    await _smartPlayer.setVolume(effective);
+  }
+
+  Future<void> _setCrossfadePosition(double value) async {
+    final normalized = value.clamp(0.0, 1.0).toDouble();
+    if (mounted) setState(() => _crossfadePosition = normalized);
+    _lastAppliedVolume = null;
+    await Future.wait([
+      _applyEffectiveVolume(),
+      _applySmartEffectiveVolume(),
+    ]);
+    await _syncCrossfadePlayback();
+  }
+
+  Future<void> _syncCrossfadePlayback() {
+    _crossfadePlaybackSync = _crossfadePlaybackSync.then((_) async {
+      final mainHasShare = _crossfadePosition < 1.0 - _crossfadeZeroThreshold;
+      final smartHasShare = _crossfadePosition > _crossfadeZeroThreshold;
+
+      if (!mainHasShare) {
+        if (_player.playing) {
+          _mainPausedByCrossfade = true;
+          await _player.pause();
+        }
+      } else if (_mainPausedByCrossfade) {
+        _mainPausedByCrossfade = false;
+        await _player.play();
+      }
+
+      if (!smartHasShare) {
+        if (_smartPlayer.playing) {
+          _smartPausedByCrossfade = true;
+          await _smartPlayer.pause();
+        }
+      } else if (_smartPausedByCrossfade) {
+        _smartPausedByCrossfade = false;
+        await _smartPlayer.play();
+      }
+    }).catchError((Object error) {
+      debugPrint('Crossfade playback synchronization failed: $error');
+    });
+    return _crossfadePlaybackSync;
+  }
+
+  Future<void> _toggleMainPlayback() async {
+    _mainPausedByCrossfade = false;
+    if (_player.playing) {
+      await _player.pause();
+    } else {
+      await _player.play();
+      await _syncCrossfadePlayback();
+    }
+  }
+
+  Future<void> _saveCrossfadePosition(double value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setDouble('audio_crossfade_position_v1', value);
+  }
+
+  Future<void> _setMasterOutputVolume(double value) async {
+    final normalized = value.clamp(0.0, 1.0).toDouble();
+    if (mounted) setState(() => _masterOutputVolume = normalized);
+    _lastAppliedVolume = null;
+    await Future.wait([
+      _applyEffectiveVolume(),
+      _applySmartEffectiveVolume(),
+    ]);
+  }
+
+  Future<void> _saveMasterOutputVolume(double value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setDouble('master_output_volume_v1', value);
   }
 
   Future<void> _setPlayerVolume(double value) async {
@@ -618,6 +745,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _replacePlaylist({required bool autoplay}) async {
     if (_tracks.isEmpty) {
+      _mainPausedByCrossfade = false;
       await _player.stop();
       return;
     }
@@ -635,7 +763,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       initialIndex: oldIndex,
       initialPosition: Duration.zero,
     );
-    if (autoplay) await _player.play();
+    if (autoplay) {
+      _mainPausedByCrossfade = false;
+      await _player.play();
+      await _syncCrossfadePlayback();
+    }
   }
   Future<void> _playTrack(int index) async {
     if (index < 0 || index >= _tracks.length) return;
@@ -644,9 +776,122 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         await _replacePlaylist(autoplay: false);
       }
       await _player.seek(Duration.zero, index: index);
+      _mainPausedByCrossfade = false;
       await _player.play();
+      await _syncCrossfadePlayback();
     } catch (error) {
       _showMessage('پخش این فایل ممکن نشد: $error');
+    }
+  }
+
+  Future<void> _confirmRemoveTrack(int index) async {
+    if (index < 0 || index >= _tracks.length) return;
+    final track = _tracks[index];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف از کتابخانه'),
+        content: Text('«${track.title}» فقط از کتابخانهٔ برنامه حذف می‌شود و فایل اصلی در حافظه باقی می‌ماند. ادامه می‌دهی؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('حذف از کتابخانه'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _removeTrack(index);
+  }
+
+  Future<void> _renameTrack(int index) async {
+    if (index < 0 || index >= _tracks.length) return;
+    final track = _tracks[index];
+    final controller = TextEditingController(text: track.title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ویرایش نام فایل'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textDirection: TextDirection.rtl,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          decoration: const InputDecoration(labelText: 'نام جدید'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('ذخیره'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (newTitle == null || newTitle.isEmpty || newTitle == track.title) return;
+    if (_tracks.any((item) => item.path != track.path && item.title == newTitle)) {
+      _showMessage('فایلی با این نام در کتابخانه وجود دارد.');
+      return;
+    }
+    try {
+      final renamed = await _folderService.renameItem(track.path, newTitle);
+      final newPath = renamed['path'];
+      if (newPath == null || newPath.isEmpty) {
+        throw StateError('مسیر جدید فایل از سیستم دریافت نشد.');
+      }
+      final oldPath = track.path;
+      final renamedName = renamed['name'] ?? newTitle;
+      final dotIndex = renamedName.lastIndexOf('.');
+      final displayTitle = dotIndex > 0
+          ? renamedName.substring(0, dotIndex)
+          : renamedName;
+      final oldIndex = _tracks.indexWhere((item) => item.path == oldPath);
+      if (oldIndex < 0) return;
+      _tracks[oldIndex] = AudioTrack(path: newPath, title: displayTitle);
+      for (var i = 0; i < _bookmarks.length; i++) {
+        final bookmark = _bookmarks[i];
+        if (bookmark.audioPath != oldPath) continue;
+        _bookmarks[i] = AudioBookmark(
+          id: bookmark.id,
+          audioPath: newPath,
+          audioTitle: displayTitle,
+          positionMs: bookmark.positionMs,
+          endPositionMs: bookmark.endPositionMs,
+          isTopicRange: bookmark.isTopicRange,
+          isFullTrack: bookmark.isFullTrack,
+          createdAt: bookmark.createdAt,
+          title: bookmark.title,
+          topic: bookmark.topic,
+        );
+      }
+      for (var i = 0; i < _playlists.length; i++) {
+        final playlist = _playlists[i];
+        _playlists[i] = playlist.copyWith(
+          trackPaths: playlist.trackPaths
+              .map((path) => path == oldPath ? newPath : path)
+              .toList(),
+        );
+      }
+      final savedLyrics = _lyrics.remove(oldPath);
+      if (savedLyrics != null) _lyrics[newPath] = savedLyrics;
+      if (_pendingTopicAudioPath == oldPath) _pendingTopicAudioPath = newPath;
+      await _persistTracks();
+      await _store.saveBookmarks(_bookmarks);
+      await _store.savePlaylists(_playlists);
+      await _store.saveLyrics(_lyrics);
+      await _replacePlaylist(autoplay: false);
+      if (mounted) setState(() {});
+      _showMessage('نام فایل در حافظه و کتابخانه تغییر کرد.');
+    } catch (error) {
+      _showMessage('تغییر نام فایل ناموفق بود: $error');
     }
   }
 
@@ -670,6 +915,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await _store.saveLyrics(_lyrics);
     await _persistTracks();
     if (_tracks.isEmpty) {
+      _mainPausedByCrossfade = false;
       await _player.stop();
       setState(() => _currentIndex = -1);
     } else {
@@ -722,6 +968,66 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (error) {
       _showMessage('ذخیره نشانک ناموفق بود: $error');
     }
+  }
+
+  Future<void> _addFullTrackBookmark() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را برای نشانک‌گذاری انتخاب کن.');
+      return;
+    }
+    final details = await _showBookmarkDetailsDialog(initialTitle: track.title);
+    if (details == null) return;
+    if (details['title']!.trim().isEmpty || details['topic']!.trim().isEmpty) {
+      _showMessage('نام نشانک و موضوع آن را وارد کن.');
+      return;
+    }
+    final now = DateTime.now();
+    final bookmark = AudioBookmark(
+      id: now.microsecondsSinceEpoch.toString(),
+      audioPath: track.path,
+      audioTitle: track.title,
+      positionMs: 0,
+      createdAt: now,
+      title: details['title']!.trim(),
+      topic: details['topic']!.trim(),
+      isFullTrack: true,
+    );
+    final updated = [..._bookmarks, bookmark]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    try {
+      await _store.saveBookmarks(updated);
+      if (!mounted) return;
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(updated);
+        _selectedSmartTopic = bookmark.topic;
+      });
+      await _saveSmartSettings();
+      _showMessage('کل فایل «${track.title}» با موضوع «${bookmark.topic}» به نشانک‌ها اضافه شد و برای پخش هوشمند انتخاب شد.');
+    } catch (error) {
+      _showMessage('ذخیره نشانک فایل ناموفق بود: $error');
+    }
+  }
+
+  void _startFullTrackBookmarkHold() {
+    _fullTrackBookmarkHoldTriggered = false;
+    _fullTrackBookmarkHoldTimer?.cancel();
+    _fullTrackBookmarkHoldTimer = Timer(const Duration(seconds: 2), () {
+      _fullTrackBookmarkHoldTriggered = true;
+      _addFullTrackBookmark();
+    });
+  }
+
+  void _endFullTrackBookmarkHold() {
+    _fullTrackBookmarkHoldTimer?.cancel();
+    _fullTrackBookmarkHoldTimer = null;
+    if (!_fullTrackBookmarkHoldTriggered) _toggleTopicRangeBookmark();
+  }
+
+  void _cancelFullTrackBookmarkHold() {
+    _fullTrackBookmarkHoldTimer?.cancel();
+    _fullTrackBookmarkHoldTimer = null;
   }
 
   Future<void> _toggleTopicRangeBookmark() async {
@@ -795,9 +1101,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   List<String> get _availableSmartTopics {
     final topics = _bookmarks
-        .where((bookmark) => bookmark.isTopicRange &&
-            bookmark.endPositionMs != null &&
-            bookmark.endPositionMs! > bookmark.positionMs)
+        .where((bookmark) =>
+            bookmark.isFullTrack ||
+            (bookmark.isTopicRange &&
+                bookmark.endPositionMs != null &&
+                bookmark.endPositionMs! > bookmark.positionMs))
         .map((bookmark) => bookmark.topic.trim())
         .where((topic) => topic.isNotEmpty)
         .toSet()
@@ -876,6 +1184,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 positionMs: item.positionMs,
                 endPositionMs: item.endPositionMs,
                 isTopicRange: item.isTopicRange,
+                isFullTrack: item.isFullTrack,
                 createdAt: item.createdAt,
                 title: details['title']!,
                 topic: details['topic']!,
@@ -948,9 +1257,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     final matching = _bookmarks
         .where((bookmark) =>
-            bookmark.isTopicRange &&
-            bookmark.endPositionMs != null &&
-            bookmark.endPositionMs! > bookmark.positionMs &&
+            (bookmark.isFullTrack ||
+                (bookmark.isTopicRange &&
+                    bookmark.endPositionMs != null &&
+                    bookmark.endPositionMs! > bookmark.positionMs)) &&
             bookmark.topic.trim() == topic &&
             _tracks.any((track) => track.path == bookmark.audioPath))
         .toList();
@@ -971,16 +1281,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final uri = parsed.scheme == 'content'
           ? parsed
           : Uri.file(bookmark.audioPath);
-      sources.add(
-        ClippingAudioSource(
-          child: AudioSource.uri(uri),
-          start: Duration(milliseconds: bookmark.positionMs),
-          end: Duration(milliseconds: bookmark.endPositionMs!),
-        ),
-      );
+      if (bookmark.isFullTrack) {
+        sources.add(AudioSource.uri(uri));
+      } else {
+        sources.add(
+          ClippingAudioSource(
+            child: AudioSource.uri(uri),
+            start: Duration(milliseconds: bookmark.positionMs),
+            end: Duration(milliseconds: bookmark.endPositionMs!),
+          ),
+        );
+      }
     }
 
     try {
+      _mainPausedByCrossfade = false;
       await _player.pause();
       await _smartPlayer.stop();
       await _smartPlayer.setAudioSources(
@@ -996,7 +1311,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ..addAll(matching);
         _smartQueueReady = true;
       });
+      _smartPausedByCrossfade = false;
       await _smartPlayer.play();
+      await _syncCrossfadePlayback();
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -1011,12 +1328,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _setSmartPlayerVolume(double value) async {
     final normalized = value.clamp(0.0, 1.0).toDouble();
     if (mounted) setState(() => _smartVolume = normalized);
-    await _smartPlayer.setVolume(normalized);
+    await _applySmartEffectiveVolume();
     final preferences = await SharedPreferences.getInstance();
     await preferences.setDouble('smart_topic_volume_v1', normalized);
   }
 
+  Future<void> _skipSmartItem({required bool next}) async {
+    if (!_smartQueueReady || _smartQueueBookmarks.isEmpty) return;
+    final currentIndex = _smartPlayer.currentIndex ?? 0;
+    final targetIndex = currentIndex + (next ? 1 : -1);
+    if (targetIndex < 0 || targetIndex >= _smartQueueBookmarks.length) {
+      _showMessage(next ? 'به انتهای فهرست پخش هوشمند رسیده‌ای.' : 'این اولین مورد فهرست پخش هوشمند است.');
+      return;
+    }
+    try {
+      await _smartPlayer.seek(Duration.zero, index: targetIndex);
+      if (!_smartPlayer.playing) {
+        _smartPausedByCrossfade = false;
+        await _smartPlayer.play();
+        await _syncCrossfadePlayback();
+      }
+      if (mounted) setState(() => _isSmartSeeking = false);
+    } catch (error) {
+      _showMessage('رفتن به مورد ${next ? 'بعدی' : 'قبلی'} ناموفق بود: $error');
+    }
+  }
+
   Future<void> _toggleSmartPlayback() async {
+    _smartPausedByCrossfade = false;
     if (_smartPlayer.playing) {
       await _smartPlayer.pause();
       return;
@@ -1024,12 +1363,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (_smartQueueReady &&
         _smartPlayer.processingState != ProcessingState.completed) {
       await _smartPlayer.play();
+      await _syncCrossfadePlayback();
       return;
     }
     await _startSmartPlayback();
   }
 
   Future<void> _stopSmartPlayback() async {
+    _smartPausedByCrossfade = false;
     await _smartPlayer.stop();
     if (mounted) {
       setState(() {
@@ -1054,7 +1395,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
       final position = Duration(milliseconds: bookmark.positionMs);
       await _player.seek(position, index: trackIndex);
+      _mainPausedByCrossfade = false;
       await _player.play();
+      await _syncCrossfadePlayback();
     } catch (error) {
       _showMessage('پخش از نشانک ممکن نشد: $error');
     }
@@ -1105,7 +1448,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           clipBehavior: Clip.antiAlias,
           child: ListTile(
             leading: Icon(
-              bookmark.isTopicRange
+              bookmark.isTopicRange || bookmark.isFullTrack
                   ? Icons.bookmark_added_rounded
                   : Icons.bookmark_rounded,
               color: colors.primary,
@@ -1119,7 +1462,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
             ),
             subtitle: Text(
-              '${bookmark.isTopicRange ? 'موضوع' : 'نشانک معمولی'}  •  ${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}${bookmark.isTopicRange && bookmark.endPositionMs != null ? ' تا ${_formatDuration(Duration(milliseconds: bookmark.endPositionMs!))}' : ''}  •  $dateLabel',
+              '${bookmark.isFullTrack ? 'فایل کامل' : bookmark.isTopicRange ? 'بازه موضوعی' : 'نشانک معمولی'}  •  ${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}${bookmark.isTopicRange && bookmark.endPositionMs != null ? ' تا ${_formatDuration(Duration(milliseconds: bookmark.endPositionMs!))}' : ''}  •  $dateLabel',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
@@ -1557,6 +1900,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _lyricsHoldTimer?.cancel();
     _themeHoldTimer?.cancel();
     _messageTimer?.cancel();
+    _fullTrackBookmarkHoldTimer?.cancel();
+    unawaited(MixerNotificationService.hide());
+    MixerNotificationService.clearOpenPanelHandler();
     _smartTopicMarqueeController.dispose();
     _tabController.dispose();
     _player.dispose();
@@ -1568,26 +1914,160 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
-        body: Column(
+        body: Stack(
           children: [
-            _buildPlayerToolbar(colors),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildLyricsTab(colors),
-                  _buildBookmarksTab(colors),
-                  _buildPlaylistsTab(colors),
-                  _buildLibraryTab(colors),
-                  _buildSmartTab(colors),
-                ],
-              ),
+            Column(
+              children: [
+                _buildPlayerToolbar(colors),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildLyricsTab(colors),
+                      _buildBookmarksTab(colors),
+                      _buildPlaylistsTab(colors),
+                      _buildLibraryTab(colors),
+                      _buildSmartTab(colors),
+                    ],
+                  ),
+                ),
+                _buildBottomNavigation(colors),
+                _buildPlayerPanel(colors),
+              ],
             ),
-            _buildBottomNavigation(colors),
-            _buildPlayerPanel(colors),
+            if (_showFloatingMixerPanel)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 104,
+                child: _buildFloatingMixerPanel(colors),
+              ),
           ],
         ),
       );
+  }
+
+
+  Widget _buildFloatingMixerPanel(ColorScheme colors) {
+    Widget volumeSlider({
+      required String title,
+      required IconData icon,
+      required double value,
+      required ValueChanged<double> onChanged,
+      required ValueChanged<double> onChangeEnd,
+    }) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
+            Text('${(value * 100).round()}٪'),
+          ]),
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Slider(
+              value: value.clamp(0.0, 1.0).toDouble(),
+              min: 0,
+              max: 1,
+              divisions: 100,
+              onChanged: onChanged,
+              onChangeEnd: onChangeEnd,
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget progressSlider({
+      required String title,
+      required IconData icon,
+      required AudioPlayer player,
+    }) {
+      return StreamBuilder<Duration>(
+        stream: player.positionStream,
+        initialData: player.position,
+        builder: (context, positionSnapshot) {
+          return StreamBuilder<Duration?>(
+            stream: player.durationStream,
+            initialData: player.duration,
+            builder: (context, durationSnapshot) {
+              final position = positionSnapshot.data ?? Duration.zero;
+              final duration = durationSnapshot.data ?? Duration.zero;
+              final maxMs = duration.inMilliseconds.toDouble();
+              final safeMax = maxMs > 0 ? maxMs : 1.0;
+              final value = position.inMilliseconds.toDouble().clamp(0.0, safeMax).toDouble();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Icon(icon, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
+                    Text('${_formatDuration(position)} / ${_formatDuration(duration)}', style: const TextStyle(fontSize: 11)),
+                  ]),
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Slider(
+                      value: value,
+                      min: 0,
+                      max: safeMax,
+                      onChanged: maxMs <= 0 ? null : (next) {
+                        player.seek(Duration(milliseconds: next.round()));
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    }
+
+    return Material(
+      elevation: 12,
+      color: colors.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              Icon(Icons.tune_rounded, color: colors.primary),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('کنترل شناور صدا', style: TextStyle(fontWeight: FontWeight.w700))),
+              IconButton(
+                tooltip: 'بستن پنل',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _showFloatingMixerPanel = false),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ]),
+            volumeSlider(
+              title: 'ترکیب صدای پلیر اصلی و هوشمند',
+              icon: Icons.compare_arrows_rounded,
+              value: _crossfadePosition,
+              onChanged: (value) => unawaited(_setCrossfadePosition(value)),
+              onChangeEnd: _saveCrossfadePosition,
+            ),
+            volumeSlider(
+              title: 'بلندی صدای خروجی نهایی',
+              icon: Icons.volume_up_rounded,
+              value: _masterOutputVolume,
+              onChanged: (value) => unawaited(_setMasterOutputVolume(value)),
+              onChangeEnd: _saveMasterOutputVolume,
+            ),
+            const Divider(height: 10),
+            progressSlider(title: 'پیشرفت پلیر اصلی', icon: Icons.music_note_rounded, player: _player),
+            progressSlider(title: 'پیشرفت پلیر هوشمند', icon: Icons.psychology_rounded, player: _smartPlayer),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildBottomNavigation(ColorScheme colors) {
@@ -1855,6 +2335,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(height: 6),
         Row(
           children: [
+            IconButton(
+              tooltip: 'مورد قبلی هوشمند',
+              onPressed: !_smartQueueReady ||
+                      (_smartPlayer.currentIndex ?? 0) <= 0
+                  ? null
+                  : () => _skipSmartItem(next: false),
+              icon: const Icon(Icons.skip_previous_rounded),
+            ),
+            const SizedBox(width: 4),
             Expanded(
               child: FilledButton.icon(
                 onPressed: topics.isEmpty ? null : _toggleSmartPlayback,
@@ -1876,14 +2365,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 4),
             IconButton.filledTonal(
               tooltip: 'توقف پخش هوشمند',
               onPressed: _stopSmartPlayback,
               icon: const Icon(Icons.stop_rounded),
             ),
-            IconButton.filledTonal(
-              tooltip: 'تنظیم صدای پلیر موضوعی',
+            IconButton(
+              tooltip: 'مورد بعدی هوشمند',
+              onPressed: !_smartQueueReady ||
+                      (_smartPlayer.currentIndex ?? 0) >=
+                          _smartQueueBookmarks.length - 1
+                  ? null
+                  : () => _skipSmartItem(next: true),
+              icon: const Icon(Icons.skip_next_rounded),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              tooltip: 'نمایش یا پنهان‌کردن اسلایدر پیشرفته',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(
+                () => _showSmartSeekSlider = !_showSmartSeekSlider,
+              ),
+              icon: Icon(
+                Icons.linear_scale_rounded,
+                color: _showSmartSeekSlider ? colors.primary : null,
+              ),
+            ),
+            IconButton(
+              tooltip: 'تنظیم صدای پلیر هوشمند',
+              visualDensity: VisualDensity.compact,
               onPressed: () => setState(
                 () => _showSmartVolumeSlider = !_showSmartVolumeSlider,
               ),
@@ -1908,7 +2424,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     label: '${(_smartVolume * 100).round()}٪',
                     onChanged: (value) {
                       setState(() => _smartVolume = value);
-                      unawaited(_smartPlayer.setVolume(value));
+                      unawaited(_applySmartEffectiveVolume());
                     },
                     onChangeEnd: (value) async {
                       await _setSmartPlayerVolume(value);
@@ -1927,6 +2443,68 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
+        const SizedBox(height: 4),
+        if (_showSmartSeekSlider)
+          StreamBuilder<Duration>(
+          stream: _smartPlayer.positionStream,
+          initialData: Duration.zero,
+          builder: (context, positionSnapshot) {
+            return StreamBuilder<Duration?>(
+              stream: _smartPlayer.durationStream,
+              builder: (context, durationSnapshot) {
+                final position = positionSnapshot.data ?? Duration.zero;
+                final duration = durationSnapshot.data ?? Duration.zero;
+                final max = duration.inMilliseconds.toDouble();
+                final currentMs = _isSmartSeeking
+                    ? _smartSeekPreviewMs
+                    : position.inMilliseconds.toDouble();
+                final safeMax = max > 0 ? max : 1.0;
+                final sliderValue = currentMs.clamp(0.0, safeMax).toDouble();
+                final displayPosition = Duration(
+                  milliseconds: sliderValue.round(),
+                );
+                return Column(
+                  children: [
+                    Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Slider(
+                        value: sliderValue,
+                        min: 0,
+                        max: safeMax,
+                        onChanged: max <= 0
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _isSmartSeeking = true;
+                                  _smartSeekPreviewMs = value;
+                                });
+                              },
+                        onChangeEnd: max <= 0
+                            ? null
+                            : (value) async {
+                                await _smartPlayer.seek(
+                                  Duration(milliseconds: value.round()),
+                                );
+                                if (mounted) {
+                                  setState(() => _isSmartSeeking = false);
+                                }
+                              },
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_formatDuration(displayPosition)),
+                        Text(_formatDuration(duration)),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
         const SizedBox(height: 8),
         if (_smartQueueBookmarks.isNotEmpty)
           StreamBuilder<int?>(
@@ -1962,7 +2540,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           SizedBox(
                             width: 48,
                             child: Text(
-                              _formatDuration(duration),
+                              bookmark.isFullTrack ? 'کل فایل' : _formatDuration(duration),
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 11,
@@ -2043,38 +2621,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
             ),
           ),
-        const SizedBox(height: 12),
-        StreamBuilder<Duration>(
-          stream: _smartPlayer.positionStream,
-          initialData: Duration.zero,
-          builder: (context, positionSnapshot) {
-            return StreamBuilder<Duration?>(
-              stream: _smartPlayer.durationStream,
-              builder: (context, durationSnapshot) {
-                final position = positionSnapshot.data ?? Duration.zero;
-                final duration = durationSnapshot.data ?? Duration.zero;
-                final max = duration.inMilliseconds.toDouble();
-                return Column(
-                  children: [
-                    LinearProgressIndicator(
-                      value: max <= 0
-                          ? 0
-                          : (position.inMilliseconds / max).clamp(0.0, 1.0),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(_formatDuration(position)),
-                        Text(_formatDuration(duration)),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
+
       ],
     );
   }
@@ -2266,6 +2813,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
         const SizedBox(width: 3),
         IconButton.filledTonal(
+          tooltip: 'جستجو در کتابخانه',
+          onPressed: () => setState(() {
+            _librarySearchOpen = !_librarySearchOpen;
+            if (!_librarySearchOpen) _librarySearchQuery = '';
+          }),
+          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+          padding: EdgeInsets.zero,
+          icon: Icon(
+            _librarySearchOpen ? Icons.close_rounded : Icons.search_rounded,
+            size: 20,
+          ),
+        ),
+        const SizedBox(width: 3),
+        IconButton.filledTonal(
           tooltip: 'انتخاب پوشه',
           onPressed: _openFolderManager,
           constraints: const BoxConstraints.tightFor(width: 34, height: 34),
@@ -2274,26 +2835,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
         const SizedBox(width: 6),
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          child: _librarySearchOpen
+              ? SizedBox(
+                  height: 36,
+                  child: TextField(
+                    autofocus: true,
+                    textAlignVertical: TextAlignVertical.center,
+                    decoration: const InputDecoration(
+                      hintText: 'جستجوی آهنگ...',
+                      prefixIcon: Icon(Icons.search_rounded, size: 18),
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onChanged: (value) => setState(
+                      () => _librarySearchQuery = value.trim(),
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 8),
+                  child: ChoiceChip(
+                    label: const Text('همه'),
+                    selected: _activeLibraryFolderUri == null,
+                    onSelected: (_) => setState(() => _activeLibraryFolderUri = null),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
                 for (final folder in _libraryFolders)
                   Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 10),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.folder_rounded, size: 18, color: colors.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          folder['name'] ?? 'پوشه',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
+                    padding: const EdgeInsetsDirectional.only(end: 8),
+                    child: ChoiceChip(
+                      avatar: const Icon(Icons.folder_rounded, size: 16),
+                      label: Text(folder['name'] ?? 'پوشه'),
+                      selected: _activeLibraryFolderUri == folder['uri'],
+                      onSelected: (_) => setState(
+                        () => _activeLibraryFolderUri = folder['uri'],
+                      ),
+                      visualDensity: VisualDensity.compact,
                     ),
                   ),
               ],
@@ -2307,7 +2891,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return Center(child: actions);
     }
 
-    final itemCount = _tracks.length;
+    final query = _librarySearchQuery.toLowerCase();
+    final folderTracks = _activeLibraryFolderUri == null
+        ? _tracks
+        : _tracks.where((track) =>
+            _trackFolderUris[track.path] == _activeLibraryFolderUri).toList();
+    final visibleTracks = query.isEmpty
+        ? folderTracks
+        : folderTracks.where((track) =>
+            track.title.toLowerCase().contains(query) ||
+            track.path.toLowerCase().contains(query)).toList();
+    final itemCount = visibleTracks.length;
     return Column(
       children: [
         Padding(
@@ -2315,7 +2909,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: actions,
         ),
         Expanded(
-          child: ListView.separated(
+          child: itemCount == 0
+              ? Center(
+                  child: Text(
+                    query.isNotEmpty
+                        ? 'آهنگی با این عبارت در این محدوده پیدا نشد.'
+                        : _activeLibraryFolderUri != null
+                            ? 'این پوشه آهنگ ثبت‌شده‌ای ندارد.'
+                            : 'فایلی در کتابخانه وجود ندارد.',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                )
+              : ListView.separated(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
             itemCount: itemCount,
             separatorBuilder: (_, _) => Divider(
@@ -2323,14 +2928,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: colors.outlineVariant.withValues(alpha: 0.55),
             ),
             itemBuilder: (context, index) {
-              final trackIndex = index;
-              final track = _tracks[trackIndex];
+              final track = visibleTracks[index];
+              final trackIndex = _tracks.indexOf(track);
               final isCurrent = _currentIndex == trackIndex;
               return ListTile(
-                dense: true,
-                visualDensity: const VisualDensity(vertical: -4),
-                minVerticalPadding: 0,
-                minTileHeight: 30,
+                dense: false,
+                visualDensity: const VisualDensity(vertical: -1),
+                minVerticalPadding: 4,
+                minTileHeight: 48,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                 tileColor: isCurrent
                     ? colors.primary.withValues(alpha: 0.10)
@@ -2345,30 +2950,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 onTap: () => _playTrack(trackIndex),
                 trailing: PopupMenuButton<String>(
-                  tooltip: 'گزینه‌های فایل صوتی',
+                  tooltip: 'ویرایش نام یا حذف از کتابخانه',
+                  position: PopupMenuPosition.under,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 28,
-                    height: 28,
+                  constraints: const BoxConstraints(
+                    minWidth: 184,
+                    maxWidth: 240,
                   ),
-                  iconSize: 17,
+                  iconSize: 24,
+                  icon: const Icon(Icons.more_vert_rounded),
                   onSelected: (action) {
-                    if (action == 'play') {
-                      _playTrack(trackIndex);
-                    } else if (action == 'delete') {
-                      _removeTrack(trackIndex);
+                    if (action == 'rename') {
+                      _renameTrack(trackIndex);
+                    } else if (action == 'remove') {
+                      _confirmRemoveTrack(trackIndex);
                     }
                   },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem<String>(
-                      value: 'play',
-                      height: 40,
-                      child: Text('پخش'),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem<String>(
+                      value: 'rename',
+                      height: 52,
+                      child: Row(
+                        children: [
+                          Icon(Icons.drive_file_rename_outline_rounded, size: 20),
+                          SizedBox(width: 12),
+                          Text('ویرایش نام'),
+                        ],
+                      ),
                     ),
-                    const PopupMenuItem<String>(
-                      value: 'delete',
-                      height: 40,
-                      child: Text('حذف'),
+                    PopupMenuItem<String>(
+                      value: 'remove',
+                      height: 52,
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline_rounded, size: 20),
+                          SizedBox(width: 12),
+                          Text('حذف از کتابخانه'),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -2526,16 +3145,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onPressed: track == null ? null : _addBookmark,
                         icon: const Icon(Icons.bookmark_add_outlined),
                       ),
-                      IconButton(
-                        tooltip: _pendingTopicStartMs == null
-                            ? 'ثبت شروع موضوع'
-                            : 'ثبت پایان موضوع (${_formatDuration(Duration(milliseconds: _pendingTopicStartMs!))})',
-                        onPressed: track == null ? null : _toggleTopicRangeBookmark,
-                        color: _pendingTopicStartMs == null ? null : colors.primary,
-                        icon: Icon(
-                          _pendingTopicStartMs == null
-                              ? Icons.bookmark_add_rounded
-                              : Icons.bookmark_added_rounded,
+                      Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: track == null
+                            ? null
+                            : (_) => _startFullTrackBookmarkHold(),
+                        onPointerUp: track == null
+                            ? null
+                            : (_) => _endFullTrackBookmarkHold(),
+                        onPointerCancel: (_) => _cancelFullTrackBookmarkHold(),
+                        child: IconButton(
+                          tooltip: 'لمس کوتاه: نشانک بازه | نگه‌داشتن ۲ ثانیه: نشانک کل فایل',
+                          onPressed: null,
+                          color: _pendingTopicStartMs == null ? null : colors.primary,
+                          icon: Icon(
+                            _pendingTopicStartMs == null
+                                ? Icons.bookmark_add_rounded
+                                : Icons.bookmark_added_rounded,
+                          ),
                         ),
                       ),
                       IconButton(
@@ -2554,10 +3181,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               : colors.onSurfaceVariant,
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'شروع پخش هوشمند',
-                        onPressed: _toggleSmartPlayback,
-                        icon: const Icon(Icons.auto_awesome_rounded),
+                      TapRegion(
+                        groupId: _mixerTapRegionGroup,
+                        onTapOutside: (_) {
+                          if (_showCrossfadePanel && mounted) {
+                            setState(() => _showCrossfadePanel = false);
+                          }
+                        },
+                        child: IconButton(
+                          tooltip: 'تنظیم ترکیب و خروجی صدای برنامه',
+                          onPressed: () => setState(
+                            () => _showFloatingMixerPanel = !_showFloatingMixerPanel,
+                          ),
+                          icon: Icon(
+                            Icons.tune_rounded,
+                            color: _showCrossfadePanel ? colors.primary : null,
+                          ),
+                        ),
                       ),
                       IconButton(
                         tooltip: 'تنظیم صدای پلیر',
@@ -2578,12 +3218,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           setState(() => _speed = value);
                           await _player.setSpeed(value);
                         },
-                        itemBuilder: (_) => <double>[
-                          0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
-                        ].map((value) => PopupMenuItem<double>(
-                              value: value,
-                              child: Text('${value}x'),
-                            )).toList(),
+                        itemBuilder: (_) {
+                          final values = <double>{
+                            0.5,
+                            0.75,
+                            1.0,
+                            ...List<double>.generate(
+                              19,
+                              (index) => (110 + index * 5) / 100,
+                            ),
+                          }.toList()
+                            ..sort();
+                          return values
+                              .map(
+                                (value) => PopupMenuItem<double>(
+                                  value: value,
+                                  child: Text('${value.toStringAsFixed(2)}x'),
+                                ),
+                              )
+                              .toList();
+                        },
                         child: Padding(
                           padding: const EdgeInsets.all(8),
                           child: Text(
@@ -2599,6 +3253,82 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
+              if (_showCrossfadePanel)
+                TapRegion(
+                  groupId: _mixerTapRegionGroup,
+                  onTapOutside: (_) {
+                    if (_showCrossfadePanel && mounted) {
+                      setState(() => _showCrossfadePanel = false);
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(top: 6, bottom: 8),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colors.outlineVariant),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.compare_arrows_rounded, size: 18),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text('ترکیب صدای پلیرها', style: TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                            Text('${((1 - _crossfadePosition) * 100).round()}٪ / ${(_crossfadePosition * 100).round()}٪'),
+                          ],
+                        ),
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Slider(
+                            value: _crossfadePosition,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            label: 'اصلی ${((1 - _crossfadePosition) * 100).round()}٪ | هوشمند ${(_crossfadePosition * 100).round()}٪',
+                            onChanged: (value) => unawaited(_setCrossfadePosition(value)),
+                            onChangeEnd: (value) => _saveCrossfadePosition(value),
+                          ),
+                        ),
+                        const Divider(height: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.volume_up_rounded, size: 18),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text('بلندی صدای خروجی نهایی', style: TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                            Text('${(_masterOutputVolume * 100).round()}٪'),
+                          ],
+                        ),
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Slider(
+                            value: _masterOutputVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            label: '${(_masterOutputVolume * 100).round()}٪',
+                            onChanged: (value) => unawaited(_setMasterOutputVolume(value)),
+                            onChangeEnd: (value) => _saveMasterOutputVolume(value),
+                          ),
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: Text(
+                            'این اسلایدر روی خروجی ترکیب‌شدهٔ هر دو پلیر اعمال می‌شود.',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               StreamBuilder<Duration>(
                 stream: _player.positionStream,
                 initialData: Duration.zero,
@@ -2728,7 +3458,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                           onPressed: track == null
                               ? null
-                              : () => playing ? _player.pause() : _player.play(),
+                              : _toggleMainPlayback,
                           child: busy
                               ? const SizedBox(
                                   width: 24,
