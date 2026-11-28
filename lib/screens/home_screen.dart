@@ -20,6 +20,7 @@ import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 import '../services/scheduled_playback_service.dart';
 import 'volume_automation_screen.dart';
+import 'radio_screen.dart';
 import '../services/mixer_notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -115,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, initialIndex: 3, vsync: this);
+    _tabController = TabController(length: 6, initialIndex: 3, vsync: this);
     _smartTopicMarqueeController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -1948,6 +1949,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       _buildPlaylistsTab(colors),
                       _buildLibraryTab(colors),
                       _buildSmartTab(colors),
+                      const RadioScreen(),
                     ],
                   ),
                 ),
@@ -2101,7 +2103,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Expanded(
               child: TabBar(
                 controller: _tabController,
-                isScrollable: false,
+                isScrollable: true,
                 labelStyle: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -2164,6 +2166,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       child: Center(child: Icon(Icons.psychology_rounded, size: 26)),
                     ),
                     text: 'بخش هوشمند',
+                  ),
+                  Tab(
+                    height: 68,
+                    iconMargin: EdgeInsets.only(bottom: 3),
+                    icon: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(child: Icon(Icons.radio_rounded, size: 26)),
+                    ),
+                    text: 'رادیو',
                   ),
                 ],
               ),
