@@ -16,6 +16,7 @@ class MixerNotificationService {
       }
     });
     _handlerRegistered = true;
+    _channel.invokeMethod<void>('ready').catchError((_) {});
   }
 
   static void clearOpenPanelHandler() {
