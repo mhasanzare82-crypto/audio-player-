@@ -2932,10 +2932,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final trackIndex = _tracks.indexOf(track);
               final isCurrent = _currentIndex == trackIndex;
               return ListTile(
-                dense: true,
-                visualDensity: const VisualDensity(vertical: -4),
-                minVerticalPadding: 0,
-                minTileHeight: 30,
+                dense: false,
+                visualDensity: const VisualDensity(vertical: -1),
+                minVerticalPadding: 4,
+                minTileHeight: 48,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                 tileColor: isCurrent
                     ? colors.primary.withValues(alpha: 0.10)
@@ -2952,12 +2952,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 trailing: PopupMenuButton<String>(
                   tooltip: 'ویرایش نام یا حذف از کتابخانه',
                   position: PopupMenuPosition.under,
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints.tightFor(
-                    width: 40,
-                    height: 40,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 184,
+                    maxWidth: 240,
                   ),
-                  iconSize: 22,
+                  iconSize: 24,
+                  icon: const Icon(Icons.more_vert_rounded),
                   onSelected: (action) {
                     if (action == 'rename') {
                       _renameTrack(trackIndex);
@@ -2968,13 +2969,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   itemBuilder: (context) => const [
                     PopupMenuItem<String>(
                       value: 'rename',
-                      height: 48,
-                      child: Text('ویرایش نام'),
+                      height: 52,
+                      child: Row(
+                        children: [
+                          Icon(Icons.drive_file_rename_outline_rounded, size: 20),
+                          SizedBox(width: 12),
+                          Text('ویرایش نام'),
+                        ],
+                      ),
                     ),
                     PopupMenuItem<String>(
                       value: 'remove',
-                      height: 48,
-                      child: Text('حذف از کتابخانه'),
+                      height: 52,
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline_rounded, size: 20),
+                          SizedBox(width: 12),
+                          Text('حذف از کتابخانه'),
+                        ],
+                      ),
                     ),
                   ],
                 ),
