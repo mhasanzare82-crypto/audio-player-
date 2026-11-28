@@ -784,6 +784,117 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _confirmRemoveTrack(int index) async {
+    if (index < 0 || index >= _tracks.length) return;
+    final track = _tracks[index];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف از کتابخانه'),
+        content: Text('«${track.title}» فقط از کتابخانهٔ برنامه حذف می‌شود و فایل اصلی در حافظه باقی می‌ماند. ادامه می‌دهی؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('حذف از کتابخانه'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _removeTrack(index);
+  }
+
+  Future<void> _renameTrack(int index) async {
+    if (index < 0 || index >= _tracks.length) return;
+    final track = _tracks[index];
+    final controller = TextEditingController(text: track.title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ویرایش نام فایل'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textDirection: TextDirection.rtl,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          decoration: const InputDecoration(labelText: 'نام جدید'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('ذخیره'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (newTitle == null || newTitle.isEmpty || newTitle == track.title) return;
+    if (_tracks.any((item) => item.path != track.path && item.title == newTitle)) {
+      _showMessage('فایلی با این نام در کتابخانه وجود دارد.');
+      return;
+    }
+    try {
+      final renamed = await _folderService.renameItem(track.path, newTitle);
+      final newPath = renamed['path'];
+      if (newPath == null || newPath.isEmpty) {
+        throw StateError('مسیر جدید فایل از سیستم دریافت نشد.');
+      }
+      final oldPath = track.path;
+      final renamedName = renamed['name'] ?? newTitle;
+      final dotIndex = renamedName.lastIndexOf('.');
+      final displayTitle = dotIndex > 0
+          ? renamedName.substring(0, dotIndex)
+          : renamedName;
+      final oldIndex = _tracks.indexWhere((item) => item.path == oldPath);
+      if (oldIndex < 0) return;
+      _tracks[oldIndex] = AudioTrack(path: newPath, title: displayTitle);
+      for (var i = 0; i < _bookmarks.length; i++) {
+        final bookmark = _bookmarks[i];
+        if (bookmark.audioPath != oldPath) continue;
+        _bookmarks[i] = AudioBookmark(
+          id: bookmark.id,
+          audioPath: newPath,
+          audioTitle: displayTitle,
+          positionMs: bookmark.positionMs,
+          endPositionMs: bookmark.endPositionMs,
+          isTopicRange: bookmark.isTopicRange,
+          isFullTrack: bookmark.isFullTrack,
+          createdAt: bookmark.createdAt,
+          title: bookmark.title,
+          topic: bookmark.topic,
+        );
+      }
+      for (var i = 0; i < _playlists.length; i++) {
+        final playlist = _playlists[i];
+        _playlists[i] = playlist.copyWith(
+          trackPaths: playlist.trackPaths
+              .map((path) => path == oldPath ? newPath : path)
+              .toList(),
+        );
+      }
+      final savedLyrics = _lyrics.remove(oldPath);
+      if (savedLyrics != null) _lyrics[newPath] = savedLyrics;
+      if (_pendingTopicAudioPath == oldPath) _pendingTopicAudioPath = newPath;
+      await _persistTracks();
+      await _store.saveBookmarks(_bookmarks);
+      await _store.savePlaylists(_playlists);
+      await _store.saveLyrics(_lyrics);
+      await _replacePlaylist(autoplay: false);
+      if (mounted) setState(() {});
+      _showMessage('نام فایل در حافظه و کتابخانه تغییر کرد.');
+    } catch (error) {
+      _showMessage('تغییر نام فایل ناموفق بود: $error');
+    }
+  }
+
   Future<void> _removeTrack(int index) async {
     if (index < 0 || index >= _tracks.length) return;
     final removed = _tracks.removeAt(index);
@@ -2839,30 +2950,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 onTap: () => _playTrack(trackIndex),
                 trailing: PopupMenuButton<String>(
-                  tooltip: 'گزینه‌های فایل صوتی',
-                  padding: EdgeInsets.zero,
+                  tooltip: 'ویرایش نام یا حذف از کتابخانه',
+                  position: PopupMenuPosition.under,
+                  padding: const EdgeInsets.all(4),
                   constraints: const BoxConstraints.tightFor(
-                    width: 28,
-                    height: 28,
+                    width: 40,
+                    height: 40,
                   ),
-                  iconSize: 17,
+                  iconSize: 22,
                   onSelected: (action) {
-                    if (action == 'play') {
-                      _playTrack(trackIndex);
-                    } else if (action == 'delete') {
-                      _removeTrack(trackIndex);
+                    if (action == 'rename') {
+                      _renameTrack(trackIndex);
+                    } else if (action == 'remove') {
+                      _confirmRemoveTrack(trackIndex);
                     }
                   },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem<String>(
-                      value: 'play',
-                      height: 40,
-                      child: Text('پخش'),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem<String>(
+                      value: 'rename',
+                      height: 48,
+                      child: Text('ویرایش نام'),
                     ),
-                    const PopupMenuItem<String>(
-                      value: 'delete',
-                      height: 40,
-                      child: Text('حذف'),
+                    PopupMenuItem<String>(
+                      value: 'remove',
+                      height: 48,
+                      child: Text('حذف از کتابخانه'),
                     ),
                   ],
                 ),
@@ -3093,12 +3205,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           setState(() => _speed = value);
                           await _player.setSpeed(value);
                         },
-                        itemBuilder: (_) => <double>[
-                          0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
-                        ].map((value) => PopupMenuItem<double>(
-                              value: value,
-                              child: Text('${value}x'),
-                            )).toList(),
+                        itemBuilder: (_) {
+                          final values = <double>{
+                            0.5,
+                            0.75,
+                            1.0,
+                            ...List<double>.generate(
+                              19,
+                              (index) => (110 + index * 5) / 100,
+                            ),
+                          }.toList()
+                            ..sort();
+                          return values
+                              .map(
+                                (value) => PopupMenuItem<double>(
+                                  value: value,
+                                  child: Text('${value.toStringAsFixed(2)}x'),
+                                ),
+                              )
+                              .toList();
+                        },
                         child: Padding(
                           padding: const EdgeInsets.all(8),
                           child: Text(
