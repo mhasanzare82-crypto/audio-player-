@@ -1901,45 +1901,48 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 6),
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             IconButton(
               tooltip: 'مورد قبلی هوشمند',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 44),
               onPressed: !_smartQueueReady ||
                       (_smartPlayer.currentIndex ?? 0) <= 0
                   ? null
                   : () => _skipSmartItem(next: false),
               icon: const Icon(Icons.skip_previous_rounded),
             ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: topics.isEmpty ? null : _toggleSmartPlayback,
-                icon: StreamBuilder<bool>(
-                  stream: _smartPlayer.playingStream,
-                  initialData: _smartPlayer.playing,
-                  builder: (context, snapshot) => Icon(
-                    snapshot.data == true
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                  ),
-                ),
-                label: StreamBuilder<bool>(
-                  stream: _smartPlayer.playingStream,
-                  initialData: _smartPlayer.playing,
-                  builder: (context, snapshot) => Text(
-                    snapshot.data == true ? 'مکث' : 'شروع پخش هوشمند',
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
             IconButton.filledTonal(
               tooltip: 'توقف پخش هوشمند',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 44),
               onPressed: _stopSmartPlayback,
               icon: const Icon(Icons.stop_rounded),
             ),
+            StreamBuilder<bool>(
+              stream: _smartPlayer.playingStream,
+              initialData: _smartPlayer.playing,
+              builder: (context, snapshot) => IconButton.filled(
+                tooltip: snapshot.data == true ? 'مکث' : 'شروع پخش گراند',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                onPressed: topics.isEmpty ? null : _toggleSmartPlayback,
+                icon: Icon(
+                  snapshot.data == true
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                ),
+              ),
+            ),
             IconButton(
               tooltip: 'مورد بعدی هوشمند',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 44),
               onPressed: !_smartQueueReady ||
                       (_smartPlayer.currentIndex ?? 0) >=
                           _smartQueueBookmarks.length - 1
@@ -1947,11 +1950,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   : () => _skipSmartItem(next: true),
               icon: const Icon(Icons.skip_next_rounded),
             ),
+            IconButton(
+              tooltip: 'نمایش یا پنهان‌کردن اسلایدر پیشرفت',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 44),
+              onPressed: () => setState(
+                () => _showSmartSeekSlider = !_showSmartSeekSlider,
+              ),
+              icon: Icon(
+                Icons.linear_scale_rounded,
+                color: _showSmartSeekSlider ? colors.primary : null,
+              ),
+            ),
+            IconButton(
+              tooltip: 'تنظیم صدای پلیر گراند',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 44),
+              onPressed: () => setState(
+                () => _showSmartVolumeSlider = !_showSmartVolumeSlider,
+              ),
+              icon: Icon(
+                _smartVolume == 0
+                    ? Icons.volume_off_rounded
+                    : Icons.volume_up_rounded,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 4),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconButton(
               tooltip: 'ترکیب صدای دو پلیر',
@@ -1962,27 +1992,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               icon: Icon(
                 Icons.tune_rounded,
                 color: _showCrossfadePanel ? colors.primary : null,
-              ),
-            ),
-            IconButton(
-              tooltip: 'نمایش یا پنهان‌کردن اسلایدر پیشرفته',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => setState(
-                () => _showSmartSeekSlider = !_showSmartSeekSlider,
-              ),
-              icon: Icon(
-                Icons.linear_scale_rounded,
-                color: _showSmartSeekSlider ? colors.primary : null,
-              ),
-            ),
-            IconButton(
-              tooltip: 'تنظیم صدای پلیر هوشمند',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => setState(
-                () => _showSmartVolumeSlider = !_showSmartVolumeSlider,
-              ),
-              icon: Icon(
-                _smartVolume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
               ),
             ),
           ],
