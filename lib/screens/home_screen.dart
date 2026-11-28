@@ -77,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
   Timer? _themeHoldTimer;
+  Timer? _wholeTrackBookmarkHoldTimer;
   Timer? _messageTimer;
   int _messageGeneration = 0;
   bool _themeLongPressTriggered = false;
@@ -757,6 +758,72 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (error) {
       _showMessage('ذخیره نشانک ناموفق بود: $error');
     }
+  }
+
+  Future<void> _bookmarkWholeTrackAsTopicRange() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را انتخاب کن.');
+      return;
+    }
+
+    final duration = _player.duration;
+    if (duration == null || duration.inMilliseconds <= 0) {
+      _showMessage('مدت‌زمان کامل فایل هنوز مشخص نشده؛ چند لحظه صبر کن و دوباره نگه دار.');
+      return;
+    }
+
+    final details = await _showBookmarkDetailsDialog(initialTitle: track.title);
+    if (details == null) return;
+    if (details['topic']!.trim().isEmpty) {
+      _showMessage('برای افزودن فایل به پلیر گراند، نام موضوع را وارد کن.');
+      return;
+    }
+
+    final now = DateTime.now();
+    final bookmark = AudioBookmark(
+      id: now.microsecondsSinceEpoch.toString(),
+      audioPath: track.path,
+      audioTitle: track.title,
+      positionMs: 0,
+      endPositionMs: duration.inMilliseconds,
+      isTopicRange: true,
+      createdAt: now,
+      title: details['title']!.trim().isEmpty ? track.title : details['title']!.trim(),
+      topic: details['topic']!.trim(),
+    );
+    final updatedBookmarks = [..._bookmarks, bookmark]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    try {
+      await _store.saveBookmarks(updatedBookmarks);
+      if (!mounted) return;
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(updatedBookmarks);
+        _selectedSmartTopic ??= bookmark.topic;
+        _pendingTopicStartMs = null;
+        _pendingTopicAudioPath = null;
+      });
+      await _saveSmartSettings();
+      _showMessage('کل فایل «${bookmark.title}» از ابتدا تا انتها در نشانک‌ها و موضوع «${bookmark.topic}» پلیر گراند ذخیره شد.');
+    } catch (error) {
+      _showMessage('ذخیره نشانک کامل فایل ناموفق بود: $error');
+    }
+  }
+
+  void _startWholeTrackBookmarkHold() {
+    _wholeTrackBookmarkHoldTimer?.cancel();
+    _wholeTrackBookmarkHoldTimer = Timer(const Duration(seconds: 2), () {
+      _wholeTrackBookmarkHoldTimer = null;
+      unawaited(_bookmarkWholeTrackAsTopicRange());
+    });
+  }
+
+  void _cancelWholeTrackBookmarkHold() {
+    _wholeTrackBookmarkHoldTimer?.cancel();
+    _wholeTrackBookmarkHoldTimer = null;
   }
 
   Future<void> _toggleTopicRangeBookmark() async {
@@ -1608,6 +1675,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _lyricsHoldTimer?.cancel();
     _themeHoldTimer?.cancel();
+    _wholeTrackBookmarkHoldTimer?.cancel();
     _messageTimer?.cancel();
     _smartTopicMarqueeController.dispose();
     _tabController.dispose();
@@ -2959,16 +3027,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onPressed: track == null ? null : _addBookmark,
                         icon: const Icon(Icons.bookmark_add_outlined),
                       ),
-                      IconButton(
-                        tooltip: _pendingTopicStartMs == null
-                            ? 'ثبت شروع موضوع'
-                            : 'ثبت پایان موضوع (${_formatDuration(Duration(milliseconds: _pendingTopicStartMs!))})',
-                        onPressed: track == null ? null : _toggleTopicRangeBookmark,
-                        color: _pendingTopicStartMs == null ? null : colors.primary,
-                        icon: Icon(
-                          _pendingTopicStartMs == null
-                              ? Icons.bookmark_add_rounded
-                              : Icons.bookmark_added_rounded,
+                      GestureDetector(
+                        onLongPressStart: track == null
+                            ? null
+                            : (_) => _startWholeTrackBookmarkHold(),
+                        onLongPressEnd: (_) => _cancelWholeTrackBookmarkHold(),
+                        onLongPressCancel: _cancelWholeTrackBookmarkHold,
+                        child: IconButton(
+                          tooltip: _pendingTopicStartMs == null
+                              ? 'لمس: ثبت بازه موضوع | نگه‌داشتن ۲ ثانیه: نشانک کل فایل'
+                              : 'لمس: ثبت پایان موضوع | نگه‌داشتن ۲ ثانیه: نشانک کل فایل',
+                          onPressed: track == null ? null : _toggleTopicRangeBookmark,
+                          color: _pendingTopicStartMs == null ? null : colors.primary,
+                          icon: Icon(
+                            _pendingTopicStartMs == null
+                                ? Icons.bookmark_add_rounded
+                                : Icons.bookmark_added_rounded,
+                          ),
                         ),
                       ),
                       IconButton(
