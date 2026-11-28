@@ -67,6 +67,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _crossfadePosition = 0.5;
   bool _showCrossfadePanel = false;
   bool _isSmartSeeking = false;
+  bool _isMainSeeking = false;
+  double _mainSeekPreviewMs = 0;
   bool _showSmartSeekSlider = true;
   double _smartSeekPreviewMs = 0;
   final Map<String, List<VolumeRange>> _volumeRangesByTrack = {};
