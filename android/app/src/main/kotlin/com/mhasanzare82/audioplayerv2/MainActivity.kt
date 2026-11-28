@@ -24,6 +24,7 @@ class MainActivity : FlutterActivity() {
     private var scheduleChannel: MethodChannel? = null
     private var mixerChannel: MethodChannel? = null
     private var pendingMixerOpen = false
+    private var mixerDartReady = false
     private val mixerNotificationId = 7402
     private val mixerNotificationChannelId = "audio_mixer_controls"
     private val notificationPermissionRequest = 7403
@@ -46,6 +47,14 @@ class MainActivity : FlutterActivity() {
         )
         mixerChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "ready" -> {
+                    mixerDartReady = true
+                    if (pendingMixerOpen) {
+                        pendingMixerOpen = false
+                        mixerChannel?.invokeMethod("openMixerPanel", null)
+                    }
+                    result.success(true)
+                }
                 "show" -> {
                     showMixerNotification()
                     result.success(true)
@@ -58,10 +67,9 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-        if (pendingMixerOpen || intent?.getBooleanExtra("open_mixer_panel", false) == true) {
-            pendingMixerOpen = false
+        if (intent?.getBooleanExtra("open_mixer_panel", false) == true) {
+            pendingMixerOpen = true
             intent?.removeExtra("open_mixer_panel")
-            mixerChannel?.invokeMethod("openMixerPanel", null)
         }
         scheduleChannel?.setMethodCallHandler { call, result ->
             try {
@@ -132,7 +140,7 @@ class MainActivity : FlutterActivity() {
 
     private fun dispatchMixerOpen() {
         val channel = mixerChannel
-        if (channel == null) {
+        if (channel == null || !mixerDartReady) {
             pendingMixerOpen = true
         } else {
             channel.invokeMethod("openMixerPanel", null)
