@@ -13,6 +13,20 @@ class FolderLibraryService {
     return {'uri': uri, 'name': name};
   }
 
+  Future<Map<String, String>> renameItem(String path, String newName) async {
+    final result = await _channel.invokeMapMethod<String, dynamic>(
+      'renameItem',
+      {'path': path, 'newName': newName},
+    );
+    if (result == null || result['path'] == null) {
+      throw StateError('سیستم مسیر جدید فایل را برنگرداند.');
+    }
+    return {
+      'path': result['path'].toString(),
+      'name': result['name']?.toString() ?? newName,
+    };
+  }
+
   Future<List<Map<String, String>>> scanFolders(
     List<String> folderUris,
   ) async {
