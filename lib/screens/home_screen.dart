@@ -55,6 +55,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final FolderLibraryService _folderService = FolderLibraryService();
   final List<AudioTrack> _tracks = [];
   bool _librarySearchOpen = false;
+  String? _expandedLibraryActionsPath;
+  final Map<String, Future<Duration?>> _libraryDurationFutures = {};
   String _librarySearchQuery = '';
   final List<Map<String, String>> _libraryFolders = [];
   final Map<String, String> _trackFolderUris = {};
@@ -1737,6 +1739,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await _player.seek(bounded);
   }
 
+  Future<Duration?> _loadLibraryTrackDuration(String path) async {
+    final probe = AudioPlayer();
+    try {
+      await probe.setFilePath(path);
+      return probe.duration;
+    } catch (_) {
+      return null;
+    } finally {
+      await probe.dispose();
+    }
+  }
+
+  Future<Duration?> _libraryTrackDuration(String path) =>
+      _libraryDurationFutures.putIfAbsent(
+        path,
+        () => _loadLibraryTrackDuration(path),
+      );
+
   String _formatDuration(Duration value) {
     String two(int n) => n.toString().padLeft(2, '0');
     final hours = value.inHours;
@@ -2954,51 +2974,74 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
-                title: _MarqueeText(
-                  text: track.title,
-                  style: const TextStyle(fontSize: 14),
-                  gap: 28,
-                ),
-                onTap: () => _playTrack(trackIndex),
-                trailing: PopupMenuButton<String>(
-                  tooltip: 'ویرایش نام یا حذف از کتابخانه',
-                  position: PopupMenuPosition.under,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 184,
-                    maxWidth: 240,
-                  ),
-                  iconSize: 24,
-                  icon: const Icon(Icons.more_vert_rounded),
-                  onSelected: (action) {
-                    if (action == 'rename') {
-                      _renameTrack(trackIndex);
-                    } else if (action == 'remove') {
-                      _confirmRemoveTrack(trackIndex);
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem<String>(
-                      value: 'rename',
-                      height: 52,
-                      child: Row(
-                        children: [
-                          Icon(Icons.drive_file_rename_outline_rounded, size: 20),
-                          SizedBox(width: 12),
-                          Text('ویرایش نام'),
-                        ],
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: _MarqueeText(
+                        text: track.title,
+                        style: const TextStyle(fontSize: 14),
+                        gap: 28,
                       ),
                     ),
-                    PopupMenuItem<String>(
-                      value: 'remove',
-                      height: 52,
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete_outline_rounded, size: 20),
-                          SizedBox(width: 12),
-                          Text('حذف از کتابخانه'),
-                        ],
+                    const SizedBox(width: 8),
+                    FutureBuilder<Duration?>(
+                      future: _libraryTrackDuration(track.path),
+                      builder: (context, snapshot) {
+                        final duration = snapshot.data;
+                        return Text(
+                          duration == null ? '--:--' : _formatDuration(duration),
+                          textDirection: TextDirection.ltr,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colors.onSurfaceVariant,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                onTap: () => _playTrack(trackIndex),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_expandedLibraryActionsPath == track.path) ...[
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() => _expandedLibraryActionsPath = null);
+                          _renameTrack(trackIndex);
+                        },
+                        icon: const Icon(Icons.drive_file_rename_outline_rounded, size: 18),
+                        label: const Text('ویرایش'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                        ),
                       ),
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() => _expandedLibraryActionsPath = null);
+                          _confirmRemoveTrack(trackIndex);
+                        },
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                        label: const Text('حذف'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: colors.error,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                        ),
+                      ),
+                    ],
+                    IconButton(
+                      tooltip: 'گزینه‌های فایل',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => setState(() {
+                        _expandedLibraryActionsPath =
+                            _expandedLibraryActionsPath == track.path
+                                ? null
+                                : track.path;
+                      }),
+                      icon: const Icon(Icons.more_vert_rounded),
                     ),
                   ],
                 ),
