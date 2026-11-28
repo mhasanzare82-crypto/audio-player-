@@ -66,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _showSmartVolumeSlider = false;
   double _crossfadePosition = 0.5;
   bool _showCrossfadePanel = false;
+  bool _showPlayerControlsPanel = false;
   bool _isSmartSeeking = false;
   bool _isMainSeeking = false;
   double _mainSeekPreviewMs = 0;
@@ -534,7 +535,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _applySmartEffectiveVolume() async {
-    final effective = (_smartVolume * _crossfadePosition).clamp(0.0, 1.0).toDouble();
+    final effective = (_volume * _smartVolume * _crossfadePosition)
+        .clamp(0.0, 1.0)
+        .toDouble();
     await _smartPlayer.setVolume(effective);
   }
 
@@ -2707,6 +2710,209 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildPlayerControlsPanel(ColorScheme colors, AudioTrack? track) {
+    final textStyle = Theme.of(context).textTheme.labelSmall;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 6, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'کنترل‌های صدا و پیشرفت',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'بستن پنل کنترل‌ها',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+                onPressed: () => setState(
+                  () => _showPlayerControlsPanel = false,
+                ),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const SizedBox(width: 104, child: Text('ترکیب صدای دو پلیر')),
+              Expanded(
+                child: Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Slider(
+                    value: _crossfadePosition,
+                    min: 0,
+                    max: 1,
+                    divisions: 100,
+                    onChanged: (value) => unawaited(_setCrossfadePosition(value)),
+                    onChangeEnd: _saveCrossfadePosition,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 42,
+                child: Text(
+                  '${(_crossfadePosition * 100).round()}٪',
+                  textAlign: TextAlign.end,
+                  style: textStyle,
+                ),
+              ),
+            ],
+          ),
+          StreamBuilder<Duration>(
+            stream: _smartPlayer.positionStream,
+            initialData: Duration.zero,
+            builder: (context, positionSnapshot) {
+              return StreamBuilder<Duration?>(
+                stream: _smartPlayer.durationStream,
+                builder: (context, durationSnapshot) {
+                  final position = positionSnapshot.data ?? Duration.zero;
+                  final duration = durationSnapshot.data ?? Duration.zero;
+                  final max = duration.inMilliseconds.toDouble();
+                  final current = _isSmartSeeking
+                      ? _smartSeekPreviewMs
+                      : position.inMilliseconds.toDouble();
+                  final value = current.clamp(0.0, max > 0 ? max : 1.0).toDouble();
+                  return _buildCompactSeekControl(
+                    colors: colors,
+                    title: 'پیشرفت پلیر گراند',
+                    position: Duration(milliseconds: value.round()),
+                    duration: duration,
+                    value: value,
+                    max: max,
+                    enabled: max > 0,
+                    onChanged: (next) => setState(() {
+                      _isSmartSeeking = true;
+                      _smartSeekPreviewMs = next;
+                    }),
+                    onChangeEnd: (next) async {
+                      await _smartPlayer.seek(Duration(milliseconds: next.round()));
+                      if (mounted) setState(() => _isSmartSeeking = false);
+                    },
+                  );
+                },
+              );
+            },
+          ),
+          StreamBuilder<Duration>(
+            stream: _player.positionStream,
+            initialData: Duration.zero,
+            builder: (context, snapshot) {
+              final position = snapshot.data ?? Duration.zero;
+              final duration = _player.duration ?? Duration.zero;
+              final max = duration.inMilliseconds.toDouble();
+              final current = _isMainSeeking
+                  ? _mainSeekPreviewMs
+                  : position.inMilliseconds.toDouble();
+              final value = current.clamp(0.0, max > 0 ? max : 1.0).toDouble();
+              return _buildCompactSeekControl(
+                colors: colors,
+                title: 'پیشرفت پلیر اصلی',
+                position: Duration(milliseconds: value.round()),
+                duration: duration,
+                value: value,
+                max: max,
+                enabled: track != null && max > 0,
+                onChanged: (next) => setState(() {
+                  _isMainSeeking = true;
+                  _mainSeekPreviewMs = next;
+                }),
+                onChangeEnd: (next) async {
+                  await _player.seek(Duration(milliseconds: next.round()));
+                  if (mounted) setState(() => _isMainSeeking = false);
+                },
+              );
+            },
+          ),
+          Row(
+            children: [
+              const SizedBox(width: 104, child: Text('صدای خروجی هر دو پلیر')),
+              Expanded(
+                child: Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Slider(
+                    value: _volume,
+                    min: 0,
+                    max: 1,
+                    divisions: 100,
+                    onChanged: (value) => unawaited(_setPlayerVolume(value)),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 42,
+                child: Text(
+                  '${(_volume * 100).round()}٪',
+                  textAlign: TextAlign.end,
+                  style: textStyle,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactSeekControl({
+    required ColorScheme colors,
+    required String title,
+    required Duration position,
+    required Duration duration,
+    required double value,
+    required double max,
+    required bool enabled,
+    required ValueChanged<double> onChanged,
+    required ValueChanged<double> onChangeEnd,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            SizedBox(width: 104, child: Text(title)),
+            Expanded(
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: Slider(
+                  value: value,
+                  min: 0,
+                  max: max > 0 ? max : 1,
+                  onChanged: enabled ? onChanged : null,
+                  onChangeEnd: enabled ? onChangeEnd : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsetsDirectional.only(start: 104, end: 2),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_formatDuration(position), style: Theme.of(context).textTheme.labelSmall),
+              Text(_formatDuration(duration), style: Theme.of(context).textTheme.labelSmall),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPlayerPanel(ColorScheme colors) {
     final track = _currentTrack;
     return Material(
@@ -2826,95 +3032,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
+                      IconButton(
+                        tooltip: 'کنترل‌های چهارگانه پلیر',
+                        onPressed: () => setState(
+                          () => _showPlayerControlsPanel = true,
+                        ),
+                        icon: Icon(
+                          Icons.tune_rounded,
+                          color: _showPlayerControlsPanel
+                              ? colors.primary
+                              : colors.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                 ],
               ),
-              StreamBuilder<Duration>(
-                stream: _player.positionStream,
-                initialData: Duration.zero,
-                builder: (context, snapshot) {
-                  final position = snapshot.data ?? Duration.zero;
-                  final duration = _player.duration ?? Duration.zero;
-                  final max = duration.inMilliseconds.toDouble();
-                  final value = position.inMilliseconds
-                      .toDouble()
-                      .clamp(0.0, max > 0 ? max : 1.0)
-                      .toDouble();
-                  final trackRanges = _bookmarks
-                      .where((bookmark) =>
-                          bookmark.isTopicRange &&
-                          bookmark.audioPath == track?.path &&
-                          bookmark.endPositionMs != null &&
-                          bookmark.endPositionMs! > bookmark.positionMs)
-                      .toList();
-                  return Column(
-                    children: [
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final usableWidth =
-                              (constraints.maxWidth - 32).clamp(0.0, double.infinity).toDouble();
-                          return Stack(
-                            children: [
-                              Slider(
-                                value: value,
-                                max: max > 0 ? max : 1,
-                                onChanged: track == null
-                                    ? null
-                                    : (next) => _player.seek(
-                                          Duration(milliseconds: next.round()),
-                                        ),
-                              ),
-                              if (max > 0)
-                                ...trackRanges.expand((bookmark) {
-                                  final startFraction =
-                                      (bookmark.positionMs / max).clamp(0.0, 1.0).toDouble();
-                                  final endFraction =
-                                      (bookmark.endPositionMs! / max).clamp(0.0, 1.0).toDouble();
-                                  return <Widget>[
-                                    PositionedDirectional(
-                                      start: 16 + usableWidth * startFraction - 1.5,
-                                      top: 16,
-                                      child: Container(
-                                        width: 3,
-                                        height: 16,
-                                        decoration: BoxDecoration(
-                                          color: colors.tertiary,
-                                          borderRadius: BorderRadius.circular(2),
-                                        ),
-                                      ),
-                                    ),
-                                    PositionedDirectional(
-                                      start: 16 + usableWidth * endFraction - 1.5,
-                                      top: 16,
-                                      child: Container(
-                                        width: 3,
-                                        height: 16,
-                                        decoration: BoxDecoration(
-                                          color: colors.primary,
-                                          borderRadius: BorderRadius.circular(2),
-                                        ),
-                                      ),
-                                    ),
-                                  ];
-                                }),
-                            ],
-                          );
-                        },
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(_formatDuration(position),
-                              style: Theme.of(context).textTheme.labelSmall),
-                          Text(_formatDuration(duration),
-                              style: Theme.of(context).textTheme.labelSmall),
-                        ],
-                      ),
-                    ],
-                  );
-                },
-              ),
+              if (_showPlayerControlsPanel)
+                _buildPlayerControlsPanel(colors, track),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
