@@ -9,6 +9,7 @@ class AudioBookmark {
     this.topic = '',
     this.endPositionMs,
     this.isTopicRange = false,
+    this.isFullTrack = false,
   });
 
   final String id;
@@ -20,6 +21,7 @@ class AudioBookmark {
   final String topic;
   final int? endPositionMs;
   final bool isTopicRange;
+  final bool isFullTrack;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -31,6 +33,7 @@ class AudioBookmark {
         'topic': topic,
         'endPositionMs': endPositionMs,
         'isTopicRange': isTopicRange,
+        'isFullTrack': isFullTrack,
       };
 
   factory AudioBookmark.fromJson(Map<String, dynamic> json) {
@@ -44,6 +47,7 @@ class AudioBookmark {
       topic: json['topic']?.toString() ?? '',
       endPositionMs: (json['endPositionMs'] as num?)?.toInt(),
       isTopicRange: json['isTopicRange'] == true,
+      isFullTrack: json['isFullTrack'] == true,
     );
   }
 }
