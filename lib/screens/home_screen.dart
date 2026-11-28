@@ -65,7 +65,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _smartVolume = 1;
   bool _showSmartVolumeSlider = false;
   double _crossfadePosition = 0.5;
+  double _masterOutputVolume = 1.0;
   bool _showCrossfadePanel = false;
+  final Object _mixerTapRegionGroup = Object();
   bool _isSmartSeeking = false;
   bool _showSmartSeekSlider = true;
   double _smartSeekPreviewMs = 0;
@@ -167,6 +169,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _smartVolume = savedSmartVolume.clamp(0.0, 1.0).toDouble();
       final savedCrossfade = preferences.getDouble('audio_crossfade_position_v1') ?? 0.5;
       _crossfadePosition = savedCrossfade.clamp(0.0, 1.0).toDouble();
+      final savedMasterOutput = preferences.getDouble('master_output_volume_v1') ?? 1.0;
+      _masterOutputVolume = savedMasterOutput.clamp(0.0, 1.0).toDouble();
       await _applySmartEffectiveVolume();
       for (final key in preferences.getKeys().where(
         (key) => key.startsWith('volume_ranges_v1_'),
@@ -522,7 +526,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         : (_volumeRangesByTrack[base64Url.encode(utf8.encode(trackPath))] ??
             const <VolumeRange>[]);
     final scheduled = scheduledVolumeAt(ranges, positionMs, _volume);
-    final effective = scheduled * (1.0 - _crossfadePosition);
+    final effective = (scheduled * (1.0 - _crossfadePosition) * _masterOutputVolume)
+        .clamp(0.0, 1.0)
+        .toDouble();
     if (_lastAppliedVolume != null &&
         (effective - _lastAppliedVolume!).abs() < 0.0001) {
       return;
@@ -532,7 +538,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _applySmartEffectiveVolume() async {
-    final effective = (_smartVolume * _crossfadePosition).clamp(0.0, 1.0).toDouble();
+    final effective = (_smartVolume * _crossfadePosition * _masterOutputVolume)
+        .clamp(0.0, 1.0)
+        .toDouble();
     await _smartPlayer.setVolume(effective);
   }
 
@@ -549,6 +557,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _saveCrossfadePosition(double value) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setDouble('audio_crossfade_position_v1', value);
+  }
+
+  Future<void> _setMasterOutputVolume(double value) async {
+    final normalized = value.clamp(0.0, 1.0).toDouble();
+    if (mounted) setState(() => _masterOutputVolume = normalized);
+    _lastAppliedVolume = null;
+    await Future.wait([
+      _applyEffectiveVolume(),
+      _applySmartEffectiveVolume(),
+    ]);
+  }
+
+  Future<void> _saveMasterOutputVolume(double value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setDouble('master_output_volume_v1', value);
   }
 
   Future<void> _setPlayerVolume(double value) async {
@@ -2776,10 +2799,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               : colors.onSurfaceVariant,
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'شروع پخش هوشمند',
-                        onPressed: _toggleSmartPlayback,
-                        icon: const Icon(Icons.auto_awesome_rounded),
+                      TapRegion(
+                        groupId: _mixerTapRegionGroup,
+                        onTapOutside: (_) {
+                          if (_showCrossfadePanel && mounted) {
+                            setState(() => _showCrossfadePanel = false);
+                          }
+                        },
+                        child: IconButton(
+                          tooltip: 'تنظیم ترکیب و خروجی صدای برنامه',
+                          onPressed: () => setState(
+                            () => _showCrossfadePanel = !_showCrossfadePanel,
+                          ),
+                          icon: Icon(
+                            Icons.tune_rounded,
+                            color: _showCrossfadePanel ? colors.primary : null,
+                          ),
+                        ),
                       ),
                       IconButton(
                         tooltip: 'تنظیم صدای پلیر',
@@ -2821,6 +2857,82 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
+              if (_showCrossfadePanel)
+                TapRegion(
+                  groupId: _mixerTapRegionGroup,
+                  onTapOutside: (_) {
+                    if (_showCrossfadePanel && mounted) {
+                      setState(() => _showCrossfadePanel = false);
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(top: 6, bottom: 8),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colors.outlineVariant),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.compare_arrows_rounded, size: 18),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text('ترکیب صدای پلیرها', style: TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                            Text('${((1 - _crossfadePosition) * 100).round()}٪ / ${(_crossfadePosition * 100).round()}٪'),
+                          ],
+                        ),
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Slider(
+                            value: _crossfadePosition,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            label: 'اصلی ${((1 - _crossfadePosition) * 100).round()}٪ | هوشمند ${(_crossfadePosition * 100).round()}٪',
+                            onChanged: (value) => unawaited(_setCrossfadePosition(value)),
+                            onChangeEnd: (value) => _saveCrossfadePosition(value),
+                          ),
+                        ),
+                        const Divider(height: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.volume_up_rounded, size: 18),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text('بلندی صدای خروجی نهایی', style: TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                            Text('${(_masterOutputVolume * 100).round()}٪'),
+                          ],
+                        ),
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Slider(
+                            value: _masterOutputVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            label: '${(_masterOutputVolume * 100).round()}٪',
+                            onChanged: (value) => unawaited(_setMasterOutputVolume(value)),
+                            onChangeEnd: (value) => _saveMasterOutputVolume(value),
+                          ),
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: Text(
+                            'این اسلایدر روی خروجی ترکیب‌شدهٔ هر دو پلیر اعمال می‌شود.',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               StreamBuilder<Duration>(
                 stream: _player.positionStream,
                 initialData: Duration.zero,
