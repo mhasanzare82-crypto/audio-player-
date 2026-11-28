@@ -84,6 +84,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _lyricsEditing = false;
   final List<AudioBookmark> _bookmarks = [];
   int? _pendingTopicStartMs;
+  Timer? _fullTrackBookmarkHoldTimer;
+  bool _fullTrackBookmarkHoldTriggered = false;
   String? _pendingTopicAudioPath;
   final List<AudioPlaylist> _playlists = [];
   String _smartTopicMode = 'manual';
@@ -793,6 +795,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (error) {
       _showMessage('ذخیره نشانک ناموفق بود: $error');
     }
+  }
+
+  Future<void> _addFullTrackBookmark() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را برای نشانک‌گذاری انتخاب کن.');
+      return;
+    }
+    final details = await _showBookmarkDetailsDialog(initialTitle: track.title);
+    if (details == null) return;
+    if (details['title']!.trim().isEmpty || details['topic']!.trim().isEmpty) {
+      _showMessage('نام نشانک و موضوع آن را وارد کن.');
+      return;
+    }
+    final now = DateTime.now();
+    final bookmark = AudioBookmark(
+      id: now.microsecondsSinceEpoch.toString(),
+      audioPath: track.path,
+      audioTitle: track.title,
+      positionMs: 0,
+      createdAt: now,
+      title: details['title']!.trim(),
+      topic: details['topic']!.trim(),
+      isFullTrack: true,
+    );
+    final updated = [..._bookmarks, bookmark]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    try {
+      await _store.saveBookmarks(updated);
+      if (!mounted) return;
+      setState(() { _bookmarks..clear()..addAll(updated); });
+      _showMessage('کل فایل «${track.title}» به نشانک‌ها اضافه شد.');
+    } catch (error) {
+      _showMessage('ذخیره نشانک فایل ناموفق بود: $error');
+    }
+  }
+
+  void _startFullTrackBookmarkHold() {
+    _fullTrackBookmarkHoldTriggered = false;
+    _fullTrackBookmarkHoldTimer?.cancel();
+    _fullTrackBookmarkHoldTimer = Timer(const Duration(seconds: 2), () {
+      _fullTrackBookmarkHoldTriggered = true;
+      _addFullTrackBookmark();
+    });
+  }
+
+  void _endFullTrackBookmarkHold() {
+    _fullTrackBookmarkHoldTimer?.cancel();
+    _fullTrackBookmarkHoldTimer = null;
+    if (!_fullTrackBookmarkHoldTriggered) _toggleTopicRangeBookmark();
   }
 
   Future<void> _toggleTopicRangeBookmark() async {
@@ -1645,6 +1696,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _lyricsHoldTimer?.cancel();
     _themeHoldTimer?.cancel();
     _messageTimer?.cancel();
+    _fullTrackBookmarkHoldTimer?.cancel();
     _smartTopicMarqueeController.dispose();
     _tabController.dispose();
     _player.dispose();
@@ -2739,16 +2791,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onPressed: track == null ? null : _addBookmark,
                         icon: const Icon(Icons.bookmark_add_outlined),
                       ),
-                      IconButton(
-                        tooltip: _pendingTopicStartMs == null
-                            ? 'ثبت شروع موضوع'
-                            : 'ثبت پایان موضوع (${_formatDuration(Duration(milliseconds: _pendingTopicStartMs!))})',
-                        onPressed: track == null ? null : _toggleTopicRangeBookmark,
-                        color: _pendingTopicStartMs == null ? null : colors.primary,
-                        icon: Icon(
-                          _pendingTopicStartMs == null
-                              ? Icons.bookmark_add_rounded
-                              : Icons.bookmark_added_rounded,
+                      GestureDetector(
+                        onTapDown: track == null ? null : (_) => _startFullTrackBookmarkHold(),
+                        onTapUp: track == null ? null : (_) => _endFullTrackBookmarkHold(),
+                        onTapCancel: _endFullTrackBookmarkHold,
+                        child: IconButton(
+                          tooltip: 'لمس کوتاه: نشانک بازه | نگه‌داشتن ۲ ثانیه: نشانک کل فایل',
+                          onPressed: null,
+                          color: _pendingTopicStartMs == null ? null : colors.primary,
+                          icon: Icon(
+                            _pendingTopicStartMs == null ? Icons.bookmark_add_rounded : Icons.bookmark_added_rounded,
+                          ),
                         ),
                       ),
                       IconButton(
