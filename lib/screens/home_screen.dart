@@ -121,6 +121,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       unawaited(_applyEffectiveVolume(position: position));
     });
     ScheduledPlaybackService.setStopHandler(() async {
+      _mainPausedByCrossfade = false;
       await _player.stop();
       _showMessage('پخش صوت طبق زمان‌بندی متوقف شد.');
     });
@@ -349,6 +350,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
 
       if (_tracks.isEmpty) {
+        _mainPausedByCrossfade = false;
         await _player.stop();
       } else {
         await _replacePlaylist(autoplay: false);
@@ -736,6 +738,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _replacePlaylist({required bool autoplay}) async {
     if (_tracks.isEmpty) {
+      _mainPausedByCrossfade = false;
       await _player.stop();
       return;
     }
@@ -794,6 +797,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await _store.saveLyrics(_lyrics);
     await _persistTracks();
     if (_tracks.isEmpty) {
+      _mainPausedByCrossfade = false;
       await _player.stop();
       setState(() => _currentIndex = -1);
     } else {
@@ -1235,6 +1239,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _stopSmartPlayback() async {
+    _smartPausedByCrossfade = false;
     await _smartPlayer.stop();
     if (mounted) {
       setState(() {
