@@ -998,6 +998,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 positionMs: item.positionMs,
                 endPositionMs: item.endPositionMs,
                 isTopicRange: item.isTopicRange,
+                isFullTrack: item.isFullTrack,
                 createdAt: item.createdAt,
                 title: details['title']!,
                 topic: details['topic']!,
