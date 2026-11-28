@@ -53,6 +53,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final LibraryStore _store = LibraryStore();
   final FolderLibraryService _folderService = FolderLibraryService();
   final List<AudioTrack> _tracks = [];
+  bool _librarySearchOpen = false;
+  String _librarySearchQuery = '';
   final List<Map<String, String>> _libraryFolders = [];
   Map<String, String> _lyrics = {};
   int _currentIndex = -1;
@@ -2439,6 +2441,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
         const SizedBox(width: 3),
         IconButton.filledTonal(
+          tooltip: 'جستجو در کتابخانه',
+          onPressed: () => setState(() {
+            _librarySearchOpen = !_librarySearchOpen;
+            if (!_librarySearchOpen) _librarySearchQuery = '';
+          }),
+          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+          padding: EdgeInsets.zero,
+          icon: Icon(
+            _librarySearchOpen ? Icons.close_rounded : Icons.search_rounded,
+            size: 20,
+          ),
+        ),
+        const SizedBox(width: 3),
+        IconButton.filledTonal(
           tooltip: 'انتخاب پوشه',
           onPressed: _openFolderManager,
           constraints: const BoxConstraints.tightFor(width: 34, height: 34),
@@ -2447,8 +2463,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
         const SizedBox(width: 6),
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          child: _librarySearchOpen
+              ? SizedBox(
+                  height: 36,
+                  child: TextField(
+                    autofocus: true,
+                    textAlignVertical: TextAlignVertical.center,
+                    decoration: const InputDecoration(
+                      hintText: 'جستجوی آهنگ...',
+                      prefixIcon: Icon(Icons.search_rounded, size: 18),
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onChanged: (value) => setState(
+                      () => _librarySearchQuery = value.trim(),
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2480,7 +2514,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return Center(child: actions);
     }
 
-    final itemCount = _tracks.length;
+    final query = _librarySearchQuery.toLowerCase();
+    final visibleTracks = query.isEmpty
+        ? _tracks
+        : _tracks.where((track) =>
+            track.title.toLowerCase().contains(query) ||
+            track.path.toLowerCase().contains(query)).toList();
+    final itemCount = visibleTracks.length;
     return Column(
       children: [
         Padding(
@@ -2488,7 +2528,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: actions,
         ),
         Expanded(
-          child: ListView.separated(
+          child: itemCount == 0
+              ? Center(
+                  child: Text(
+                    query.isEmpty
+                        ? 'فایلی در کتابخانه وجود ندارد.'
+                        : 'آهنگی با این عبارت پیدا نشد.',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                )
+              : ListView.separated(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
             itemCount: itemCount,
             separatorBuilder: (_, _) => Divider(
@@ -2496,8 +2545,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: colors.outlineVariant.withValues(alpha: 0.55),
             ),
             itemBuilder: (context, index) {
-              final trackIndex = index;
-              final track = _tracks[trackIndex];
+              final track = visibleTracks[index];
+              final trackIndex = _tracks.indexOf(track);
               final isCurrent = _currentIndex == trackIndex;
               return ListTile(
                 dense: true,
