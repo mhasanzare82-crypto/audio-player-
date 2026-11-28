@@ -846,6 +846,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (!_fullTrackBookmarkHoldTriggered) _toggleTopicRangeBookmark();
   }
 
+  void _cancelFullTrackBookmarkHold() {
+    _fullTrackBookmarkHoldTimer?.cancel();
+    _fullTrackBookmarkHoldTimer = null;
+  }
+
   Future<void> _toggleTopicRangeBookmark() async {
     final track = _currentTrack;
     if (track == null) {
@@ -2795,7 +2800,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       GestureDetector(
                         onTapDown: track == null ? null : (_) => _startFullTrackBookmarkHold(),
                         onTapUp: track == null ? null : (_) => _endFullTrackBookmarkHold(),
-                        onTapCancel: _endFullTrackBookmarkHold,
+                        onTapCancel: _cancelFullTrackBookmarkHold,
                         child: IconButton(
                           tooltip: 'لمس کوتاه: نشانک بازه | نگه‌داشتن ۲ ثانیه: نشانک کل فایل',
                           onPressed: null,
