@@ -20,6 +20,7 @@ import '../services/library_store.dart';
 import '../services/folder_library_service.dart';
 import '../services/scheduled_playback_service.dart';
 import 'volume_automation_screen.dart';
+import '../services/mixer_notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -73,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _crossfadePlaybackSync = Future<void>.value();
   static const double _crossfadeZeroThreshold = 0.0001;
   bool _showCrossfadePanel = false;
+  bool _showFloatingMixerPanel = false;
   final Object _mixerTapRegionGroup = Object();
   bool _isSmartSeeking = false;
   bool _showSmartSeekSlider = true;
@@ -117,6 +119,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 10),
     )..repeat();
     _configureAudioSession();
+    MixerNotificationService.setOpenPanelHandler(() {
+      if (mounted) setState(() => _showFloatingMixerPanel = true);
+    });
+    unawaited(MixerNotificationService.show());
+
     _player.positionStream.listen((position) {
       unawaited(_applyEffectiveVolume(position: position));
     });
@@ -889,6 +896,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _startFullTrackBookmarkHold() {
     _fullTrackBookmarkHoldTriggered = false;
     _fullTrackBookmarkHoldTimer?.cancel();
+    unawaited(MixerNotificationService.hide());
+    MixerNotificationService.clearOpenPanelHandler();
     _fullTrackBookmarkHoldTimer = Timer(const Duration(seconds: 2), () {
       _fullTrackBookmarkHoldTriggered = true;
       _addFullTrackBookmark();
@@ -1781,26 +1790,160 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
-        body: Column(
+        body: Stack(
           children: [
-            _buildPlayerToolbar(colors),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildLyricsTab(colors),
-                  _buildBookmarksTab(colors),
-                  _buildPlaylistsTab(colors),
-                  _buildLibraryTab(colors),
-                  _buildSmartTab(colors),
-                ],
-              ),
+            Column(
+              children: [
+                _buildPlayerToolbar(colors),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildLyricsTab(colors),
+                      _buildBookmarksTab(colors),
+                      _buildPlaylistsTab(colors),
+                      _buildLibraryTab(colors),
+                      _buildSmartTab(colors),
+                    ],
+                  ),
+                ),
+                _buildBottomNavigation(colors),
+                _buildPlayerPanel(colors),
+              ],
             ),
-            _buildBottomNavigation(colors),
-            _buildPlayerPanel(colors),
+            if (_showFloatingMixerPanel)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 104,
+                child: _buildFloatingMixerPanel(colors),
+              ),
           ],
         ),
       );
+  }
+
+
+  Widget _buildFloatingMixerPanel(ColorScheme colors) {
+    Widget volumeSlider({
+      required String title,
+      required IconData icon,
+      required double value,
+      required ValueChanged<double> onChanged,
+      required ValueChanged<double> onChangeEnd,
+    }) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
+            Text('${(value * 100).round()}٪'),
+          ]),
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Slider(
+              value: value.clamp(0.0, 1.0).toDouble(),
+              min: 0,
+              max: 1,
+              divisions: 100,
+              onChanged: onChanged,
+              onChangeEnd: onChangeEnd,
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget progressSlider({
+      required String title,
+      required IconData icon,
+      required AudioPlayer player,
+    }) {
+      return StreamBuilder<Duration>(
+        stream: player.positionStream,
+        initialData: player.position,
+        builder: (context, positionSnapshot) {
+          return StreamBuilder<Duration?>(
+            stream: player.durationStream,
+            initialData: player.duration,
+            builder: (context, durationSnapshot) {
+              final position = positionSnapshot.data ?? Duration.zero;
+              final duration = durationSnapshot.data ?? Duration.zero;
+              final maxMs = duration.inMilliseconds.toDouble();
+              final safeMax = maxMs > 0 ? maxMs : 1.0;
+              final value = position.inMilliseconds.toDouble().clamp(0.0, safeMax).toDouble();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Icon(icon, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
+                    Text('${_formatDuration(position)} / ${_formatDuration(duration)}', style: const TextStyle(fontSize: 11)),
+                  ]),
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Slider(
+                      value: value,
+                      min: 0,
+                      max: safeMax,
+                      onChanged: maxMs <= 0 ? null : (next) {
+                        player.seek(Duration(milliseconds: next.round()));
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    }
+
+    return Material(
+      elevation: 12,
+      color: colors.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              Icon(Icons.tune_rounded, color: colors.primary),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('کنترل شناور صدا', style: TextStyle(fontWeight: FontWeight.w700))),
+              IconButton(
+                tooltip: 'بستن پنل',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _showFloatingMixerPanel = false),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ]),
+            volumeSlider(
+              title: 'ترکیب صدای پلیر اصلی و هوشمند',
+              icon: Icons.compare_arrows_rounded,
+              value: _crossfadePosition,
+              onChanged: (value) => unawaited(_setCrossfadePosition(value)),
+              onChangeEnd: _saveCrossfadePosition,
+            ),
+            volumeSlider(
+              title: 'بلندی صدای خروجی نهایی',
+              icon: Icons.volume_up_rounded,
+              value: _masterOutputVolume,
+              onChanged: (value) => unawaited(_setMasterOutputVolume(value)),
+              onChangeEnd: _saveMasterOutputVolume,
+            ),
+            const Divider(height: 10),
+            progressSlider(title: 'پیشرفت پلیر اصلی', icon: Icons.music_note_rounded, player: _player),
+            progressSlider(title: 'پیشرفت پلیر هوشمند', icon: Icons.psychology_rounded, player: _smartPlayer),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildBottomNavigation(ColorScheme colors) {
@@ -2910,7 +3053,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         child: IconButton(
                           tooltip: 'تنظیم ترکیب و خروجی صدای برنامه',
                           onPressed: () => setState(
-                            () => _showCrossfadePanel = !_showCrossfadePanel,
+                            () => _showFloatingMixerPanel = !_showFloatingMixerPanel,
                           ),
                           icon: Icon(
                             Icons.tune_rounded,
