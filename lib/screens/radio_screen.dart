@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -32,7 +33,7 @@ class _RadioScreenState extends State<RadioScreen>
   static const String _storageKey = 'internet_radio_stations_v1';
   final AudioPlayer _player = AudioPlayer(
     handleInterruptions: false,
-    handleAudioSessionActivation: false,
+    handleAudioSessionActivation: !Platform.isAndroid,
   );
   final List<_RadioStation> _stations = [];
   String? _selectedStationId;

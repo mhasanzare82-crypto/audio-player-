@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ui/compact-bottom-navigation, feature/player-toolbar-utilities, feature/library-content-list, feature/floating-audio-mixer-controls, fix/full-track-bookmarks-smart-player, feature/consolidated-library-mixer-bookmarks]
+    branches: [main, ui/compact-bottom-navigation, feature/player-toolbar-utilities, feature/library-content-list, feature/floating-audio-mixer-controls, fix/full-track-bookmarks-smart-player, feature/consolidated-library-mixer-bookmarks, feature/internet-radio-player]
   workflow_dispatch:
 
 permissions:
