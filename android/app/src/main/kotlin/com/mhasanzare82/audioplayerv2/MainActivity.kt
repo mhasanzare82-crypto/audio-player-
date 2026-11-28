@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.IntentFilter
 import android.os.Build
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -82,6 +83,19 @@ class MainActivity : FlutterActivity() {
                             result.error("SCAN_FAILED", error.message, null)
                         }
                     }
+                    "renameItem" -> {
+                        val path = call.argument<String>("path")
+                        val requestedName = call.argument<String>("newName")
+                        if (path.isNullOrBlank() || requestedName.isNullOrBlank()) {
+                            result.error("INVALID_RENAME", "مسیر یا نام جدید معتبر نیست.", null)
+                        } else {
+                            try {
+                                result.success(renameItem(path, requestedName))
+                            } catch (error: Exception) {
+                                result.error("RENAME_FAILED", error.message, null)
+                            }
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -142,6 +156,66 @@ class MainActivity : FlutterActivity() {
         } catch (error: Exception) {
             callback.error("PERMISSION_FAILED", error.message, null)
         }
+    }
+
+    private fun renameItem(path: String, requestedName: String): Map<String, String> {
+        val trimmed = requestedName.trim()
+        require(trimmed.isNotEmpty()) { "نام فایل نمی‌تواند خالی باشد." }
+        require(!trimmed.contains('/') && !trimmed.contains('\\')) {
+            "نام فایل نباید شامل جداکننده مسیر باشد."
+        }
+
+        val sourceUri = Uri.parse(path)
+        if (sourceUri.scheme == "content") {
+            val documentUri = if (DocumentsContract.isTreeUri(sourceUri)) {
+                DocumentsContract.buildDocumentUriUsingTree(
+                    sourceUri,
+                    DocumentsContract.getTreeDocumentId(sourceUri)
+                )
+            } else {
+                sourceUri
+            }
+            val currentName = queryDisplayName(documentUri)
+                ?: throw IllegalStateException("نام فعلی فایل از ارائه‌دهنده دریافت نشد.")
+            val extension = currentName.substringAfterLast('.', "").let {
+                if (currentName.contains('.') && it.isNotEmpty()) ".$it" else ""
+            }
+            val finalName = if (extension.isNotEmpty() &&
+                !trimmed.endsWith(extension, ignoreCase = true)
+            ) "$trimmed$extension" else trimmed
+            val renamedUri = DocumentsContract.renameDocument(
+                contentResolver,
+                documentUri,
+                finalName
+            ) ?: throw IllegalStateException("مدیریت فایل اجازه تغییر نام این مورد را نداد.")
+            return mapOf("path" to renamedUri.toString(), "name" to finalName)
+        }
+
+        val source = java.io.File(path)
+        if (!source.exists()) throw IllegalStateException("فایل اصلی پیدا نشد.")
+        val currentName = source.name
+        val extension = currentName.substringAfterLast('.', "").let {
+            if (currentName.contains('.') && it.isNotEmpty()) ".$it" else ""
+        }
+        val finalName = if (extension.isNotEmpty() &&
+            !trimmed.endsWith(extension, ignoreCase = true)
+        ) "$trimmed$extension" else trimmed
+        val destination = java.io.File(source.parentFile, finalName)
+        if (destination.exists()) throw IllegalStateException("فایلی با این نام از قبل وجود دارد.")
+        if (!source.renameTo(destination)) {
+            throw IllegalStateException("سیستم‌عامل نتوانست نام فایل را تغییر دهد.")
+        }
+        return mapOf("path" to destination.absolutePath, "name" to finalName)
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        contentResolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                return cursor.getString(0)
+            }
+        }
+        return null
     }
 
     private fun scanFolders(folderUris: List<String>): List<Map<String, String>> {
