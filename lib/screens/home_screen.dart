@@ -2864,16 +2864,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onPressed: track == null ? null : _addBookmark,
                         icon: const Icon(Icons.bookmark_add_outlined),
                       ),
-                      GestureDetector(
-                        onTapDown: track == null ? null : (_) => _startFullTrackBookmarkHold(),
-                        onTapUp: track == null ? null : (_) => _endFullTrackBookmarkHold(),
-                        onTapCancel: _cancelFullTrackBookmarkHold,
+                      Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: track == null
+                            ? null
+                            : (_) => _startFullTrackBookmarkHold(),
+                        onPointerUp: track == null
+                            ? null
+                            : (_) => _endFullTrackBookmarkHold(),
+                        onPointerCancel: (_) => _cancelFullTrackBookmarkHold(),
                         child: IconButton(
                           tooltip: 'لمس کوتاه: نشانک بازه | نگه‌داشتن ۲ ثانیه: نشانک کل فایل',
                           onPressed: null,
                           color: _pendingTopicStartMs == null ? null : colors.primary,
                           icon: Icon(
-                            _pendingTopicStartMs == null ? Icons.bookmark_add_rounded : Icons.bookmark_added_rounded,
+                            _pendingTopicStartMs == null
+                                ? Icons.bookmark_add_rounded
+                                : Icons.bookmark_added_rounded,
                           ),
                         ),
                       ),
