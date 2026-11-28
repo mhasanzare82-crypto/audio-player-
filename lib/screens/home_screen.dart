@@ -66,6 +66,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double? _lastAppliedVolume;
   late final TabController _tabController;
   Timer? _lyricsHoldTimer;
+  Timer? _topicBookmarkHoldTimer;
+  bool _topicBookmarkLongPressTriggered = false;
   Timer? _themeHoldTimer;
   Timer? _messageTimer;
   int _messageGeneration = 0;
@@ -724,6 +726,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _onTopicBookmarkPointerDown(PointerDownEvent event) {
+    _topicBookmarkLongPressTriggered = false;
+    _topicBookmarkHoldTimer?.cancel();
+    _topicBookmarkHoldTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      _topicBookmarkLongPressTriggered = true;
+      unawaited(_addFullTrackTopicBookmark());
+    });
+  }
+
+  void _onTopicBookmarkPointerEnd(PointerEvent event) {
+    _topicBookmarkHoldTimer?.cancel();
+    _topicBookmarkHoldTimer = null;
+  }
+
+  void _onTopicBookmarkPointerCancel(PointerCancelEvent event) {
+    _topicBookmarkHoldTimer?.cancel();
+    _topicBookmarkHoldTimer = null;
+    _topicBookmarkLongPressTriggered = false;
+  }
+
+  void _handleTopicBookmarkTap() {
+    if (_topicBookmarkLongPressTriggered) {
+      _topicBookmarkLongPressTriggered = false;
+      return;
+    }
+    unawaited(_toggleTopicRangeBookmark());
+  }
+
+  Future<void> _addFullTrackTopicBookmark() async {
+    final track = _currentTrack;
+    if (track == null) {
+      _showMessage('ابتدا یک فایل صوتی را برای ثبت نشانک انتخاب کن.');
+      return;
+    }
+
+    final details = await _showBookmarkDetailsDialog(initialTitle: track.title);
+    if (details == null) return;
+    if (details['topic']!.isEmpty) {
+      _showMessage('برای استفاده از پخش هوشمند، موضوع فایل را وارد کن.');
+      return;
+    }
+
+    final now = DateTime.now();
+    final bookmark = AudioBookmark(
+      id: now.microsecondsSinceEpoch.toString(),
+      audioPath: track.path,
+      audioTitle: track.title,
+      positionMs: 0,
+      endPositionMs: _player.duration?.inMilliseconds,
+      isFullTrack: true,
+      createdAt: now,
+      title: details['title']!.isEmpty ? track.title : details['title']!,
+      topic: details['topic']!,
+    );
+    final updatedBookmarks = [..._bookmarks, bookmark]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    try {
+      await _store.saveBookmarks(updatedBookmarks);
+      if (!mounted) return;
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(updatedBookmarks);
+        _selectedSmartTopic ??= bookmark.topic;
+      });
+      await _saveSmartSettings();
+      _showMessage('کل فایل «${track.title}» با موضوع «${bookmark.topic}» به نشانک‌ها اضافه شد و در پخش هوشمند قابل انتخاب است.');
+    } catch (error) {
+      _showMessage('ذخیره نشانک کل فایل ناموفق بود: $error');
+    }
+  }
+
   Future<void> _toggleTopicRangeBookmark() async {
     final track = _currentTrack;
     if (track == null) {
@@ -795,9 +871,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   List<String> get _availableSmartTopics {
     final topics = _bookmarks
-        .where((bookmark) => bookmark.isTopicRange &&
-            bookmark.endPositionMs != null &&
-            bookmark.endPositionMs! > bookmark.positionMs)
+        .where((bookmark) =>
+            bookmark.isFullTrack ||
+            (bookmark.isTopicRange &&
+                bookmark.endPositionMs != null &&
+                bookmark.endPositionMs! > bookmark.positionMs))
         .map((bookmark) => bookmark.topic.trim())
         .where((topic) => topic.isNotEmpty)
         .toSet()
@@ -876,6 +954,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 positionMs: item.positionMs,
                 endPositionMs: item.endPositionMs,
                 isTopicRange: item.isTopicRange,
+                isFullTrack: item.isFullTrack,
                 createdAt: item.createdAt,
                 title: details['title']!,
                 topic: details['topic']!,
@@ -948,9 +1027,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     final matching = _bookmarks
         .where((bookmark) =>
-            bookmark.isTopicRange &&
-            bookmark.endPositionMs != null &&
-            bookmark.endPositionMs! > bookmark.positionMs &&
+            (bookmark.isFullTrack ||
+                (bookmark.isTopicRange &&
+                    bookmark.endPositionMs != null &&
+                    bookmark.endPositionMs! > bookmark.positionMs)) &&
             bookmark.topic.trim() == topic &&
             _tracks.any((track) => track.path == bookmark.audioPath))
         .toList();
@@ -971,13 +1051,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final uri = parsed.scheme == 'content'
           ? parsed
           : Uri.file(bookmark.audioPath);
-      sources.add(
-        ClippingAudioSource(
-          child: AudioSource.uri(uri),
-          start: Duration(milliseconds: bookmark.positionMs),
-          end: Duration(milliseconds: bookmark.endPositionMs!),
-        ),
-      );
+      if (bookmark.isFullTrack) {
+        sources.add(AudioSource.uri(uri));
+      } else {
+        sources.add(
+          ClippingAudioSource(
+            child: AudioSource.uri(uri),
+            start: Duration(milliseconds: bookmark.positionMs),
+            end: Duration(milliseconds: bookmark.endPositionMs!),
+          ),
+        );
+      }
     }
 
     try {
@@ -1105,7 +1189,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           clipBehavior: Clip.antiAlias,
           child: ListTile(
             leading: Icon(
-              bookmark.isTopicRange
+              bookmark.isTopicRange || bookmark.isFullTrack
                   ? Icons.bookmark_added_rounded
                   : Icons.bookmark_rounded,
               color: colors.primary,
@@ -1119,7 +1203,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
             ),
             subtitle: Text(
-              '${bookmark.isTopicRange ? 'موضوع' : 'نشانک معمولی'}  •  ${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}${bookmark.isTopicRange && bookmark.endPositionMs != null ? ' تا ${_formatDuration(Duration(milliseconds: bookmark.endPositionMs!))}' : ''}  •  $dateLabel',
+              '${bookmark.isFullTrack ? 'فایل کامل' : bookmark.isTopicRange ? 'بازه موضوعی' : 'نشانک معمولی'}  •  ${bookmark.topic.isEmpty ? 'بدون موضوع' : bookmark.topic}  •  ${_formatDuration(Duration(milliseconds: bookmark.positionMs))}${bookmark.isTopicRange && bookmark.endPositionMs != null ? ' تا ${_formatDuration(Duration(milliseconds: bookmark.endPositionMs!))}' : bookmark.isFullTrack && bookmark.endPositionMs != null ? ' تا ${_formatDuration(Duration(milliseconds: bookmark.endPositionMs!))}' : ''}  •  $dateLabel',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
@@ -1555,6 +1639,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _lyricsHoldTimer?.cancel();
+    _topicBookmarkHoldTimer?.cancel();
     _themeHoldTimer?.cancel();
     _messageTimer?.cancel();
     _smartTopicMarqueeController.dispose();
@@ -2031,7 +2116,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             leading: Icon(Icons.info_outline_rounded, size: 20),
             title: Text('هنوز موضوعی ثبت نشده است.', style: TextStyle(fontSize: 13)),
             subtitle: Text(
-              'در نوار پخش، با دکمه نشانک موضوعی ابتدا و انتهای هر موضوع را ثبت کن.',
+              'لمس کوتاه دکمه نشانک بازه‌ای برای ثبت ابتدا و انتهای موضوع است؛ نگه‌داشتن آن به مدت ۲ ثانیه، کل فایل را با عنوان و موضوع ثبت می‌کند.',
               style: TextStyle(fontSize: 11),
             ),
           )
@@ -2526,16 +2611,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onPressed: track == null ? null : _addBookmark,
                         icon: const Icon(Icons.bookmark_add_outlined),
                       ),
-                      IconButton(
-                        tooltip: _pendingTopicStartMs == null
-                            ? 'ثبت شروع موضوع'
-                            : 'ثبت پایان موضوع (${_formatDuration(Duration(milliseconds: _pendingTopicStartMs!))})',
-                        onPressed: track == null ? null : _toggleTopicRangeBookmark,
-                        color: _pendingTopicStartMs == null ? null : colors.primary,
-                        icon: Icon(
-                          _pendingTopicStartMs == null
-                              ? Icons.bookmark_add_rounded
-                              : Icons.bookmark_added_rounded,
+                      Listener(
+                        onPointerDown: track == null ? null : _onTopicBookmarkPointerDown,
+                        onPointerUp: _onTopicBookmarkPointerEnd,
+                        onPointerCancel: _onTopicBookmarkPointerCancel,
+                        child: IconButton(
+                          tooltip: _pendingTopicStartMs == null
+                              ? 'لمس کوتاه: ثبت بازه موضوعی • نگه‌داشتن ۲ ثانیه: ثبت کل فایل'
+                              : 'لمس کوتاه: ثبت پایان موضوع • نگه‌داشتن ۲ ثانیه: ثبت کل فایل',
+                          onPressed: track == null ? null : _handleTopicBookmarkTap,
+                          color: _pendingTopicStartMs == null ? null : colors.primary,
+                          icon: Icon(
+                            _pendingTopicStartMs == null
+                                ? Icons.bookmark_add_rounded
+                                : Icons.bookmark_added_rounded,
+                          ),
                         ),
                       ),
                       IconButton(
