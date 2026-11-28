@@ -650,6 +650,111 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _confirmRemoveTrack(int index) async {
+    if (index < 0 || index >= _tracks.length) return;
+    final track = _tracks[index];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف از کتابخانه'),
+        content: Text('«${track.title}» فقط از کتابخانهٔ برنامه حذف می‌شود و فایل اصلی در حافظه باقی می‌ماند. ادامه می‌دهی؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('حذف از کتابخانه'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _removeTrack(index);
+  }
+
+  Future<void> _renameTrack(int index) async {
+    if (index < 0 || index >= _tracks.length) return;
+    final track = _tracks[index];
+    final controller = TextEditingController(text: track.title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ویرایش نام فایل'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textDirection: TextDirection.rtl,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          decoration: const InputDecoration(labelText: 'نام جدید'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('ذخیره'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (newTitle == null || newTitle.isEmpty || newTitle == track.title) return;
+    if (_tracks.any((item) => item.path != track.path && item.title == newTitle)) {
+      _showMessage('فایلی با این نام در کتابخانه وجود دارد.');
+      return;
+    }
+    try {
+      final renamed = await _folderService.renameItem(track.path, newTitle);
+      final newPath = renamed['path'];
+      if (newPath == null || newPath.isEmpty) {
+        throw StateError('مسیر جدید فایل از سیستم دریافت نشد.');
+      }
+      final oldPath = track.path;
+      final oldIndex = _tracks.indexWhere((item) => item.path == oldPath);
+      if (oldIndex < 0) return;
+      _tracks[oldIndex] = AudioTrack(path: newPath, title: newTitle);
+      for (var i = 0; i < _bookmarks.length; i++) {
+        final bookmark = _bookmarks[i];
+        if (bookmark.audioPath != oldPath) continue;
+        _bookmarks[i] = AudioBookmark(
+          id: bookmark.id,
+          audioPath: newPath,
+          audioTitle: newTitle,
+          positionMs: bookmark.positionMs,
+          createdAt: bookmark.createdAt,
+          title: bookmark.title,
+          topic: bookmark.topic,
+          endPositionMs: bookmark.endPositionMs,
+          isTopicRange: bookmark.isTopicRange,
+        );
+      }
+      for (var i = 0; i < _playlists.length; i++) {
+        final playlist = _playlists[i];
+        _playlists[i] = playlist.copyWith(
+          trackPaths: playlist.trackPaths
+              .map((path) => path == oldPath ? newPath : path)
+              .toList(),
+        );
+      }
+      final savedLyrics = _lyrics.remove(oldPath);
+      if (savedLyrics != null) _lyrics[newPath] = savedLyrics;
+      if (_pendingTopicAudioPath == oldPath) _pendingTopicAudioPath = newPath;
+      await _persistTracks();
+      await _store.saveBookmarks(_bookmarks);
+      await _store.savePlaylists(_playlists);
+      await _store.saveLyrics(_lyrics);
+      await _replacePlaylist(autoplay: false);
+      if (mounted) setState(() {});
+      _showMessage('نام فایل در حافظه و کتابخانه تغییر کرد.');
+    } catch (error) {
+      _showMessage('تغییر نام فایل ناموفق بود: $error');
+    }
+  }
+
   Future<void> _removeTrack(int index) async {
     if (index < 0 || index >= _tracks.length) return;
     final removed = _tracks.removeAt(index);
@@ -2353,22 +2458,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   iconSize: 17,
                   onSelected: (action) {
-                    if (action == 'play') {
-                      _playTrack(trackIndex);
+                    if (action == 'rename') {
+                      _renameTrack(trackIndex);
                     } else if (action == 'delete') {
-                      _removeTrack(trackIndex);
+                      _confirmRemoveTrack(trackIndex);
                     }
                   },
                   itemBuilder: (context) => [
                     const PopupMenuItem<String>(
-                      value: 'play',
+                      value: 'rename',
                       height: 40,
-                      child: Text('پخش'),
+                      child: Text('ویرایش نام'),
                     ),
                     const PopupMenuItem<String>(
                       value: 'delete',
                       height: 40,
-                      child: Text('حذف'),
+                      child: Text('حذف از کتابخانه'),
                     ),
                   ],
                 ),
