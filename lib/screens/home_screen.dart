@@ -1977,17 +1977,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             IconButton(
-              tooltip: 'ترکیب صدای دو پلیر',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => setState(
-                () => _showCrossfadePanel = !_showCrossfadePanel,
-              ),
-              icon: Icon(
-                Icons.tune_rounded,
-                color: _showCrossfadePanel ? colors.primary : null,
-              ),
-            ),
-            IconButton(
               tooltip: 'نمایش یا پنهان‌کردن اسلایدر پیشرفته',
               visualDensity: VisualDensity.compact,
               onPressed: () => setState(
@@ -2010,56 +1999,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ],
         ),
-                  if (_showCrossfadePanel)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(10, 2, 10, 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Text(
-                            'ترکیب صدای پلیرها',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 4),
-                          Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'پلیر اصلی ${((1 - _crossfadePosition) * 100).round()}٪',
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
-                                Text(
-                                  'پلیر هوشمند ${(_crossfadePosition * 100).round()}٪',
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: Slider(
-                              value: _crossfadePosition,
-                              min: 0,
-                              max: 1,
-                              divisions: 100,
-                              label: 'اصلی ${((1 - _crossfadePosition) * 100).round()}٪ | هوشمند ${(_crossfadePosition * 100).round()}٪',
-                              onChanged: (value) {
-                                unawaited(_setCrossfadePosition(value));
-                              },
-                              onChangeEnd: (value) async {
-                                await _saveCrossfadePosition(value);
-                                if (mounted) {
-                                  setState(() => _showCrossfadePanel = false);
-                                }
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
         if (_showSmartVolumeSlider)
           Padding(
             padding: const EdgeInsetsDirectional.only(start: 8, end: 8, top: 2),
